@@ -69,12 +69,30 @@ python -m plastiglom.apps.scheduler
 
 # Finalize any entries whose lock_at has passed:
 python -m plastiglom.apps.archiver --finalize
+
+# Serve the web app over Tailscale (loopback-only by default):
+python -m plastiglom.apps.web_app --host 127.0.0.1 --port 8001
 ```
 
-## Phase 2+
+## Phase 2
 
-- Tagger: `python -m plastiglom.apps.tagger <entry-path>`
-- Analyzer: `python -m plastiglom.apps.analyzer weekly` (or `monthly`, `adhoc`).
+```bash
+# Seed tag pool + hubs from YAML (merge by default; --replace to start fresh):
+python -m plastiglom.apps.seeder seed-tagpool path/to/seed.yaml
+# An example seed lives at exercises/seed_tagpool.example.yaml.
+
+# Sonnet weekly digest — stats + themes, no memory writes:
+python -m plastiglom.apps.analyzer digest            # with Sonnet themes
+python -m plastiglom.apps.analyzer digest --no-themes  # stats only
+
+# Per-entry tagging (Sonnet):
+python -m plastiglom.apps.tagger <entry-path>
+```
+
+## Phase 3+ (not yet wired to cron)
+
+- Opus analysis: `python -m plastiglom.apps.analyzer opus weekly`
+  (also `monthly`, `adhoc`).
 
 ## Testing
 
