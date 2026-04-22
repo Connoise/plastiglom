@@ -53,7 +53,7 @@ Optional extras: `.[telegram]`, `.[web]`.
 Copy `.env.example` to `.env` and fill in:
 
 - `PLASTIGLOM_VAULT_PATH` — absolute path to your private vault.
-- `PLASTIGLOM_TIMEZONE` — IANA tz (e.g. `America/Los_Angeles`).
+- `PLASTIGLOM_TIMEZONE` — IANA tz (e.g. `Pacific/Honolulu`).
 - `PLASTIGLOM_MORNING_FIRE` / `PLASTIGLOM_EVENING_FIRE` — 24h wall-clock times.
 - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` — notification channel.
 - `ANTHROPIC_API_KEY` — required for tagger / analyzer / meta-engine.
