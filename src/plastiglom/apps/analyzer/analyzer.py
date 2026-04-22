@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
 
@@ -77,7 +77,6 @@ class Analyzer:
             user=user,
             cacheable_system=cacheable,
             max_tokens=4096,
-            temperature=0.3,
         )
         response = self.router.invoke(task, call)
 
@@ -196,5 +195,5 @@ def _report_path(vault: Path, request: AnalysisRequest) -> Path:
 def week_bounds(anchor: date) -> tuple[datetime, datetime]:
     """Return the [start, end) datetimes for the ISO week containing `anchor`."""
     monday = anchor - timedelta(days=anchor.weekday())
-    start = datetime.combine(monday, datetime.min.time())
+    start = datetime.combine(monday, datetime.min.time(), tzinfo=timezone.utc)
     return start, start + timedelta(days=7)

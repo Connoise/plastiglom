@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from plastiglom.apps.analyzer.analyzer import (
     AnalysisRequest,
@@ -38,12 +38,12 @@ def main(argv: list[str] | None = None) -> int:
         start, end = week_bounds(today - timedelta(days=1))
     elif cadence is Cadence.MONTHLY:
         first = today.replace(day=1)
-        previous_end = datetime.combine(first, datetime.min.time())
+        previous_end = datetime.combine(first, datetime.min.time(), tzinfo=timezone.utc)
         month_start = (first - timedelta(days=1)).replace(day=1)
-        start = datetime.combine(month_start, datetime.min.time())
+        start = datetime.combine(month_start, datetime.min.time(), tzinfo=timezone.utc)
         end = previous_end
     else:
-        end = datetime.combine(today + timedelta(days=1), datetime.min.time())
+        end = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
         start = end - timedelta(days=7)
 
     report_path = analyzer.run(

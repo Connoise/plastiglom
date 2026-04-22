@@ -12,7 +12,7 @@ class LLMCall:
     # Content blocks that Anthropic should mark as cacheable.
     cacheable_system: list[str] = field(default_factory=list)
     max_tokens: int = 4096
-    temperature: float = 0.2
+    temperature: float | None = None
 
 
 @dataclass

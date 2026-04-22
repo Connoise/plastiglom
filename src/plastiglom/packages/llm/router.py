@@ -76,13 +76,15 @@ class LLMRouter:
         system_blocks = _build_system_blocks(call)
 
         started = time.monotonic()
-        message = client.messages.create(
-            model=model,
-            max_tokens=call.max_tokens,
-            temperature=call.temperature,
-            system=system_blocks,
-            messages=[{"role": "user", "content": call.user}],
-        )
+        create_kwargs: dict[str, object] = {
+            "model": model,
+            "max_tokens": call.max_tokens,
+            "system": system_blocks,
+            "messages": [{"role": "user", "content": call.user}],
+        }
+        if call.temperature is not None:
+            create_kwargs["temperature"] = call.temperature
+        message = client.messages.create(**create_kwargs)
         elapsed_ms = int((time.monotonic() - started) * 1000)
 
         text = "".join(
