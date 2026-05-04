@@ -1,0 +1,35 @@
+# Example seed for `tags/pool.md` and `hubs/`.
+# Copy to your private vault tree (or any path) and run:
+#   python -m plastiglom.apps.seeder seed-tagpool path/to/this.yaml
+# Merging is the default; pass --replace to start from an empty pool.
+
+tags:
+  - tag: values
+    gloss: "identity and what the user cares about, over time"
+  - tag: intention
+    gloss: "stated plan or desired direction for a period"
+  - tag: reflection
+    gloss: "looking back with any kind of frame"
+  - tag: relationships
+    gloss: "interactions with named or unnamed others"
+  - tag: body
+    gloss: "somatic state or needs"
+  - tag: identity
+    gloss: "who the user takes themselves to be"
+  - tag: temporal-self
+    gloss: "self across different times"
+  - tag: boundaries
+    gloss: "what the user allows or does not allow"
+  - tag: uncertainty
+    gloss: "flagged not-knowing"
+
+hubs:
+  - name: Identity
+    description: "The 'who am I' family of themes."
+    tags: [values, identity, temporal-self]
+  - name: Relating
+    description: "Give-and-take with others."
+    tags: [relationships, boundaries]
+  - name: Soma
+    description: "Body signals and attention."
+    tags: [body]
