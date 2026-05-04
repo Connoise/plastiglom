@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from plastiglom.apps.archiver.archiver import Archiver, FireEvent
+from plastiglom.apps.memory_indexer import QMDCLIIndexer, StubIndexer
 from plastiglom.apps.scheduler.scheduler import FiringClock, Scheduler, compute_lock_at
 from plastiglom.packages.config import load_settings
 from plastiglom.packages.core.exercise import ExerciseCategory, ExerciseStatus
@@ -66,7 +67,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         return 0
 
-    archiver = Archiver(settings.vault_path)
+    indexer = (
+        QMDCLIIndexer(qmd_bin=settings.qmd_bin, vault_path=settings.vault_path)
+        if settings.qmd_bin
+        else StubIndexer()
+    )
+
+    def _on_change(_path: Path) -> None:
+        indexer.reindex()
+
+    archiver = Archiver(settings.vault_path, on_change=_on_change)
     archiver.finalize_prior(now)
     entry = archiver.on_fire(FireEvent(exercise=exercise, fired_at=now, lock_at=lock_at))
     logger.info("fired entry=%s", entry.id)

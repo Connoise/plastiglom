@@ -89,10 +89,28 @@ python -m plastiglom.apps.analyzer digest --no-themes  # stats only
 python -m plastiglom.apps.tagger <entry-path>
 ```
 
-## Phase 3+ (not yet wired to cron)
+## Phase 3 (Opus analysis + memory)
 
-- Opus analysis: `python -m plastiglom.apps.analyzer opus weekly`
-  (also `monthly`, `adhoc`).
+```bash
+# Seed memory file subjects from YAML (re-runs append rather than overwrite):
+python -m plastiglom.apps.seeder seed-memory path/to/memory.yaml
+# An example seed lives at exercises/seed_memory.example.yaml.
+
+# Opus analysis — writes to analysis/<cadence>/ + appends to memory/:
+python -m plastiglom.apps.analyzer opus weekly
+python -m plastiglom.apps.analyzer opus monthly
+python -m plastiglom.apps.analyzer opus adhoc --query "your question"
+```
+
+The web app at `/analysis` lists every report and lets you flag any of them
+as wrong. Submitting a correction note re-runs the analyzer; the corrected
+report lands next to the prior one with a `-corrected-<unix-ts>` suffix and
+a pointer is written to `analysis_history/`. The prior report is never
+overwritten.
+
+QMD reindexing fires automatically after every entry write or daily-index
+update once `PLASTIGLOM_QMD_BIN` resolves; failures are swallowed so a
+flaky indexer can't break archival.
 
 ## Testing
 

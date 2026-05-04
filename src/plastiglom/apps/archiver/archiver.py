@@ -12,6 +12,8 @@ Responsibilities (see §7.4 of DESIGN.md):
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -44,8 +46,29 @@ class SubmitRequest:
 
 
 class Archiver:
-    def __init__(self, vault_path: Path) -> None:
+    """File-system writer for entries + daily index.
+
+    Pass `on_change` to receive a callback after every successful write so
+    the QMD memory indexer can reindex without the archiver knowing about
+    QMD specifically. The callback runs in-process; failures are swallowed
+    so a flaky indexer can't block archival.
+    """
+
+    def __init__(
+        self,
+        vault_path: Path,
+        *,
+        on_change: Callable[[Path], None] | None = None,
+    ) -> None:
         self.vault_path = vault_path
+        self._on_change = on_change
+
+    def _notify_change(self, path: Path) -> None:
+        if self._on_change is None:
+            return
+        # Reindexing is advisory; never fail an archive write because of it.
+        with contextlib.suppress(Exception):
+            self._on_change(path)
 
     # ----- firing / submission -----
 
@@ -131,9 +154,9 @@ class Archiver:
 
     def _write_entry(self, entry: Entry) -> None:
         doc = entry_to_document(entry)
-        write_markdown_file(
-            entry_path(self.vault_path, entry.timestamp_fired, entry.exercise_id), doc
-        )
+        path = entry_path(self.vault_path, entry.timestamp_fired, entry.exercise_id)
+        write_markdown_file(path, doc)
+        self._notify_change(path)
 
     def _update_daily_index(self, day: date) -> None:
         """Regenerate the daily index for `day` from on-disk entries."""
@@ -163,7 +186,9 @@ class Archiver:
             metadata={"date": day.isoformat(), "kind": "daily_index"},
             content="\n".join(lines) + "\n",
         )
-        write_markdown_file(daily_index_path(self.vault_path, day), index_doc)
+        index_path = daily_index_path(self.vault_path, day)
+        write_markdown_file(index_path, index_doc)
+        self._notify_change(index_path)
 
 
 def _exercise_slug(exercise_id: str) -> str:
