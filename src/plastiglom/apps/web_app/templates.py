@@ -32,7 +32,9 @@ _BASE = """\
 </head>
 <body>
 <nav class="nav">
-<a href="/">Today</a> <a href="/day/{{ today.isoformat() }}">Index</a>
+<a href="/">Today</a>
+<a href="/day/{{ today.isoformat() }}">Index</a>
+<a href="/analysis">Analysis</a>
 </nav>
 <main>
 {% block content %}{% endblock %}
@@ -106,6 +108,47 @@ _DAY = """\
 {% endblock %}
 """
 
+_ANALYSIS_INDEX = """\
+{% extends '_base.html' %}
+{% block content %}
+<h1>Analysis</h1>
+{% if items %}
+{% for cadence, group in items %}
+<h2>{{ cadence }}</h2>
+<ul>
+{% for item in group %}
+<li>
+  <a href="/analysis/view?path={{ item.relative_path|urlencode }}">{{ item.title }}</a>
+  {% if item.has_correction %}<span class="meta">(correction)</span>{% endif %}
+</li>
+{% endfor %}
+</ul>
+{% endfor %}
+{% else %}
+<p>No analysis reports yet.</p>
+{% endif %}
+{% endblock %}
+"""
+
+_ANALYSIS_VIEW = """\
+{% extends '_base.html' %}
+{% block content %}
+<h1>{{ relative_path }}</h1>
+<p class="meta">cadence: {{ meta.cadence or '?' }}
+{% if meta.window_start %} · {{ meta.window_start }} → {{ meta.window_end }}{% endif %}
+{% if meta.correction_of %} · supersedes <code>{{ meta.correction_of }}</code>{% endif %}
+</p>
+<article>{{ rendered_body|safe }}</article>
+<hr>
+<h2>Flag a correction</h2>
+<form method="post" action="/analysis/correct">
+<input type="hidden" name="path" value="{{ relative_path }}">
+<textarea name="note" placeholder="What was wrong?" required></textarea>
+<button type="submit">Submit correction note</button>
+</form>
+{% endblock %}
+"""
+
 
 def build_env() -> Environment:
     return Environment(
@@ -115,6 +158,8 @@ def build_env() -> Environment:
                 "home.html": _HOME,
                 "entry.html": _ENTRY,
                 "day.html": _DAY,
+                "analysis_index.html": _ANALYSIS_INDEX,
+                "analysis_view.html": _ANALYSIS_VIEW,
             }
         ),
         autoescape=select_autoescape(["html"]),

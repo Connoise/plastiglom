@@ -1,0 +1,23 @@
+# Example seed for `memory/` files. See §6.4 of DESIGN.md.
+# Apply with:
+#   python -m plastiglom.apps.seeder seed-memory path/to/this.yaml
+#
+# Re-running on an existing subject appends a dated section rather than
+# overwriting, in keeping with the "never silently overwrite memory" rule.
+
+memory:
+  - subject: emotional_patterns
+    description: "Recurring emotional dynamics surfaced across entries."
+    body: ""
+
+  - subject: outlook
+    description: "Forward-looking attitude and expectations over time."
+    body: ""
+
+  - subject: recurring_contradictions
+    description: "Patterns the user holds in tension; named, not preserved as ambiguity."
+    body: ""
+
+  - subject: open_questions
+    description: "Lines of inquiry that haven't yet resolved."
+    body: ""

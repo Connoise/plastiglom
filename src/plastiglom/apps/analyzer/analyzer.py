@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 
@@ -96,9 +96,10 @@ class Analyzer:
                 content=response.text.rstrip() + "\n",
             ),
         )
-        if request.correction_of and request.slug:
+        if request.correction_of:
+            history_slug = request.slug or request.correction_of.stem
             write_markdown_file(
-                analysis_history_path(self.vault_path, date.today(), request.slug),
+                analysis_history_path(self.vault_path, date.today(), history_slug),
                 FrontmatterDocument(
                     metadata={
                         "supersedes": str(request.correction_of),
@@ -109,6 +110,33 @@ class Analyzer:
                 ),
             )
         return report_path
+
+
+def correction_request(prior_report_path: Path, correction_note: str) -> AnalysisRequest:
+    """Build a re-run request from an existing report's frontmatter.
+
+    The new report will be written next to the prior one with a `-corrected-`
+    suffix, and a pointer is logged to `analysis_history/`.
+    """
+    doc = read_markdown_file(prior_report_path)
+    meta = doc.metadata
+    return AnalysisRequest(
+        cadence=Cadence(meta["cadence"]),
+        window_start=_as_dt(meta["window_start"]),
+        window_end=_as_dt(meta["window_end"]),
+        query=meta.get("query"),
+        slug=meta.get("slug"),
+        correction_of=prior_report_path,
+        correction_note=correction_note,
+    )
+
+
+def _as_dt(value: object) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    raise TypeError(f"cannot coerce {value!r} to datetime")
 
 
 def _collect_window(vault: Path, start: datetime, end: datetime) -> list[Entry]:
@@ -183,6 +211,12 @@ def _analyzer_system_prompt() -> str:
 
 
 def _report_path(vault: Path, request: AnalysisRequest) -> Path:
+    if request.correction_of:
+        # Corrections never overwrite the prior report. Land them next to it
+        # with a `-corrected-<UTC unix>` suffix so prior + corrected coexist.
+        prior = request.correction_of
+        suffix = f"-corrected-{int(datetime.now(tz=UTC).timestamp())}"
+        return prior.with_name(prior.stem + suffix + prior.suffix)
     if request.cadence is Cadence.WEEKLY:
         iso = request.window_start.isocalendar()
         return analysis_weekly_path(vault, iso.year, iso.week)

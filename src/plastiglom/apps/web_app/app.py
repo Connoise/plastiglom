@@ -5,6 +5,9 @@ Routes:
   - GET  /entry/{id}       : view an individual entry (read-only once locked).
   - POST /entry/{id}       : submit or update a response.
   - GET  /day/{iso-date}   : list entries for that day.
+  - GET  /analysis         : index of weekly / monthly / ad-hoc reports.
+  - GET  /analysis/view    : render one report.
+  - POST /analysis/correct : flag a report wrong; runs analyzer if provided.
 
 The route handlers are thin; persistence goes through `Archiver.on_submit`
 which enforces `lock_at`.
@@ -12,21 +15,33 @@ which enforces `lock_at`.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
+from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from plastiglom.apps.analyzer import AnalysisRequest, correction_request
 from plastiglom.apps.archiver.archiver import Archiver, SubmitRequest
+from plastiglom.apps.web_app.analysis_view import (
+    list_analysis,
+    resolve_analysis_path,
+)
 from plastiglom.apps.web_app.lookup import (
     iter_entries_for_day,
     latest_open_entry,
     load_entry,
 )
 from plastiglom.apps.web_app.templates import build_env
+from plastiglom.packages.vault.markdown import read_markdown_file
+
+
+class AnalyzerLike(Protocol):
+    def run(self, request: AnalysisRequest) -> Path: ...
 
 
 def create_app(
@@ -34,11 +49,18 @@ def create_app(
     tz: ZoneInfo,
     *,
     now: Callable[[], datetime] | None = None,
+    analyzer: AnalyzerLike | None = None,
+    on_change: Callable[[Path], None] | None = None,
 ) -> FastAPI:
-    """Build the FastAPI app. `now` is injectable for tests."""
+    """Build the FastAPI app.
+
+    `now` is injectable for tests. `analyzer` is optional: when omitted, the
+    correction route returns 503 instead of trying to call the LLM.
+    `on_change` lets a caller pass an indexer reindex hook.
+    """
     app = FastAPI(title="Plastiglom", version="0.0.1")
     env = build_env()
-    archiver = Archiver(vault_path)
+    archiver = Archiver(vault_path, on_change=on_change)
     clock: Callable[[], datetime] = now or (lambda: datetime.now(tz=tz))
 
     def render(template: str, **ctx: object) -> HTMLResponse:
@@ -92,4 +114,62 @@ def create_app(
         entries = iter_entries_for_day(vault_path, day)
         return render("day.html", day=day, entries=entries, title=f"Plastiglom — {day}")
 
+    @app.get("/analysis", response_class=HTMLResponse)
+    def analysis_index() -> HTMLResponse:
+        items = list_analysis(vault_path)
+        grouped: dict[str, list] = defaultdict(list)
+        for item in items:
+            grouped[item.cadence].append(item)
+        ordered = sorted(grouped.items(), key=lambda kv: kv[0])
+        return render("analysis_index.html", items=ordered, title="Plastiglom — Analysis")
+
+    @app.get("/analysis/view", response_class=HTMLResponse)
+    def analysis_view(path: str) -> HTMLResponse:
+        try:
+            resolved = resolve_analysis_path(vault_path, path)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        doc = read_markdown_file(resolved)
+        return render(
+            "analysis_view.html",
+            relative_path=path,
+            meta=doc.metadata,
+            rendered_body=_naive_markdown_to_html(doc.content),
+            title=f"Plastiglom — {resolved.stem}",
+        )
+
+    @app.post("/analysis/correct")
+    def analysis_correct(path: str = Form(...), note: str = Form(...)) -> RedirectResponse:
+        if analyzer is None:
+            raise HTTPException(status_code=503, detail="analyzer is not configured")
+        try:
+            prior = resolve_analysis_path(vault_path, path)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        request = correction_request(prior, note)
+        new_path = analyzer.run(request)
+        relative = new_path.relative_to(vault_path / "analysis").as_posix()
+        return RedirectResponse(
+            url=f"/analysis/view?path={relative}",
+            status_code=303,
+        )
+
     return app
+
+
+def _naive_markdown_to_html(text: str) -> str:
+    """Minimal markdown -> HTML.
+
+    The vault stores plain markdown; we don't pull in a heavyweight
+    markdown library here. Newlines become paragraph breaks; everything
+    else is escaped by Jinja2 (we set autoescape=True). Only the body
+    we return is marked safe at the call site.
+    """
+    from html import escape
+
+    parts = [
+        f"<p>{escape(block).replace(chr(10), '<br>')}</p>"
+        for block in text.split("\n\n")
+        if block.strip()
+    ]
+    return "\n".join(parts)

@@ -4,7 +4,12 @@ Produces weekly, monthly, and ad-hoc reports. Never overwrites prior analysis.
 Corrections produce a superseding report plus a pointer in `analysis_history/`.
 """
 
-from plastiglom.apps.analyzer.analyzer import AnalysisRequest, Analyzer, Cadence
+from plastiglom.apps.analyzer.analyzer import (
+    AnalysisRequest,
+    Analyzer,
+    Cadence,
+    correction_request,
+)
 from plastiglom.apps.analyzer.digest import (
     DigestStats,
     WeeklyDigest,
@@ -19,5 +24,6 @@ __all__ = [
     "DigestStats",
     "WeeklyDigest",
     "compute_stats",
+    "correction_request",
     "render_stats_markdown",
 ]
