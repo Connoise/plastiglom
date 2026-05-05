@@ -35,6 +35,7 @@ _BASE = """\
 <a href="/">Today</a>
 <a href="/day/{{ today.isoformat() }}">Index</a>
 <a href="/analysis">Analysis</a>
+<a href="/proposals">Proposals</a>
 </nav>
 <main>
 {% block content %}{% endblock %}
@@ -130,6 +131,81 @@ _ANALYSIS_INDEX = """\
 {% endblock %}
 """
 
+_PROPOSALS_INDEX = """\
+{% extends '_base.html' %}
+{% block content %}
+<h1>Proposals</h1>
+{% if pending %}
+<h2>Pending</h2>
+<ul>
+{% for record in pending %}
+<li>
+  <a href="/proposals/{{ record.id }}">{{ record.proposal.action.value }}
+    <code>{{ record.proposal.exercise.id }}</code></a>
+  <span class="meta">proposed {{ record.proposed_at.strftime('%Y-%m-%d %H:%M') }}
+    by {{ record.proposed_by }}</span>
+</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No pending proposals.</p>
+{% endif %}
+
+{% if decided %}
+<h2>Decided</h2>
+<ul>
+{% for record in decided %}
+<li>
+  <a href="/proposals/{{ record.id }}">{{ record.proposal.action.value }}
+    <code>{{ record.proposal.exercise.id }}</code></a>
+  <span class="meta">{{ record.status.value }}
+    {% if record.decided_at %}· {{ record.decided_at.strftime('%Y-%m-%d') }}{% endif %}
+  </span>
+</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endblock %}
+"""
+
+_PROPOSAL_VIEW = """\
+{% extends '_base.html' %}
+{% block content %}
+<h1>{{ record.proposal.action.value }}: <code>{{ record.proposal.exercise.id }}</code></h1>
+<p class="meta">
+  status: {{ record.status.value }}
+  · proposed {{ record.proposed_at.strftime('%Y-%m-%d %H:%M') }} by {{ record.proposed_by }}
+  {% if record.decided_at %}· decided {{ record.decided_at.strftime('%Y-%m-%d %H:%M') }}
+   by {{ record.decided_by }}{% endif %}
+</p>
+
+<h2>Rationale</h2>
+<p>{{ record.proposal.rationale }}</p>
+
+{% if record.proposal.diff %}
+<h2>Diff</h2>
+<pre>{{ record.proposal.diff }}</pre>
+{% endif %}
+
+<h2>Proposed exercise</h2>
+<pre>{{ proposed_yaml }}</pre>
+
+{% if record.status.value == 'pending' %}
+<h2>Decision</h2>
+<form method="post" action="/proposals/{{ record.id }}/approve" style="display:inline">
+<button type="submit">Approve & apply</button>
+</form>
+<form method="post" action="/proposals/{{ record.id }}/reject" style="display:inline; margin-left:1rem;">
+<input type="text" name="note" placeholder="(optional) reason" style="width:14rem;">
+<button type="submit">Reject</button>
+</form>
+{% elif record.decision_note %}
+<h2>Decision note</h2>
+<p>{{ record.decision_note }}</p>
+{% endif %}
+{% endblock %}
+"""
+
 _ANALYSIS_VIEW = """\
 {% extends '_base.html' %}
 {% block content %}
@@ -160,6 +236,8 @@ def build_env() -> Environment:
                 "day.html": _DAY,
                 "analysis_index.html": _ANALYSIS_INDEX,
                 "analysis_view.html": _ANALYSIS_VIEW,
+                "proposals_index.html": _PROPOSALS_INDEX,
+                "proposal_view.html": _PROPOSAL_VIEW,
             }
         ),
         autoescape=select_autoescape(["html"]),

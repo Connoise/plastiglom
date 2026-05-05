@@ -112,6 +112,25 @@ QMD reindexing fires automatically after every entry write or daily-index
 update once `PLASTIGLOM_QMD_BIN` resolves; failures are swallowed so a
 flaky indexer can't break archival.
 
+## Phase 4 (meta-engine)
+
+Opus proposes exercise changes — never auto-applied. Proposals land in
+`proposals/<id>.md` with status `pending` and surface in the web app at
+`/proposals`, where you can approve (calls `apply_proposal` and writes a
+note to `exercise_history/`) or reject with a note. Decided proposals
+stay on disk for audit.
+
+```bash
+# Generate proposals from a recent analysis context (Opus):
+python -c "
+from plastiglom.apps.meta_engine import Generator, GeneratorInput, detect_blind_spots
+# wire up settings + router + pool, then call detect_blind_spots(...)
+"
+```
+
+Secondary exercises fire context-triggered (parent main must have fired
+earlier today). The scheduler caps secondary firings at three per day.
+
 ## Testing
 
 ```bash
