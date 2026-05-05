@@ -111,6 +111,49 @@ class Scheduler:
             weights = [1.0] * len(candidates)
         return self.rng.choices(candidates, weights=weights, k=1)[0]
 
+    def select_secondaries(
+        self,
+        pool: list[Exercise],
+        *,
+        when: datetime,
+        parent_ids_fired_today: set[str],
+        already_fired_secondary_ids: set[str],
+        max_count: int = 3,
+    ) -> list[Exercise]:
+        """Pick context-triggered secondary exercises for the current moment.
+
+        Per §7.1: at most three secondaries per day, each tied to a parent
+        main exercise that fired earlier today. We do not pick a secondary
+        whose parent hasn't fired yet — that would defeat the within-day
+        time-variance probe.
+        """
+        if max_count <= 0:
+            return []
+        candidates = [
+            ex
+            for ex in pool
+            if ex.status is ExerciseStatus.ACTIVE
+            and ex.category is ExerciseCategory.SECONDARY
+            and ex.parent_id in parent_ids_fired_today
+            and ex.id not in already_fired_secondary_ids
+        ]
+        if not candidates:
+            return []
+        weights = [weight_for(ex, when) for ex in candidates]
+        if all(w <= 0 for w in weights):
+            weights = [1.0] * len(candidates)
+        # Sample without replacement up to min(max_count, len(candidates)).
+        chosen: list[Exercise] = []
+        remaining = list(candidates)
+        remaining_weights = list(weights)
+        while remaining and len(chosen) < max_count:
+            pick = self.rng.choices(remaining, weights=remaining_weights, k=1)[0]
+            chosen.append(pick)
+            idx = remaining.index(pick)
+            remaining.pop(idx)
+            remaining_weights.pop(idx)
+        return chosen
+
 
 def _window_for(when: datetime, clock: FiringClock) -> ScheduleWindow:
     """Classify a firing time as morning or evening by proximity to the clock."""

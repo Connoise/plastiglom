@@ -27,6 +27,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from plastiglom.apps.analyzer import AnalysisRequest, correction_request
 from plastiglom.apps.archiver.archiver import Archiver, SubmitRequest
+from plastiglom.apps.meta_engine import (
+    ProposalStatus,
+    apply_proposal,
+    decide,
+    list_proposals,
+    load_proposal,
+)
 from plastiglom.apps.web_app.analysis_view import (
     list_analysis,
     resolve_analysis_path,
@@ -38,6 +45,7 @@ from plastiglom.apps.web_app.lookup import (
 )
 from plastiglom.apps.web_app.templates import build_env
 from plastiglom.packages.vault.markdown import read_markdown_file
+from plastiglom.packages.vault.serializers import exercise_to_document
 
 
 class AnalyzerLike(Protocol):
@@ -154,7 +162,79 @@ def create_app(
             status_code=303,
         )
 
+    @app.get("/proposals", response_class=HTMLResponse)
+    def proposals_index() -> HTMLResponse:
+        all_records = list_proposals(vault_path)
+        pending = [r for r in all_records if r.status is ProposalStatus.PENDING]
+        decided = [r for r in all_records if r.status is not ProposalStatus.PENDING]
+        return render(
+            "proposals_index.html",
+            pending=pending,
+            decided=decided,
+            title="Plastiglom — Proposals",
+        )
+
+    @app.get("/proposals/{proposal_id}", response_class=HTMLResponse)
+    def proposal_view(proposal_id: str) -> HTMLResponse:
+        try:
+            record = load_proposal(vault_path, proposal_id)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        proposed_yaml = _exercise_metadata_yaml(record.proposal.exercise)
+        return render(
+            "proposal_view.html",
+            record=record,
+            proposed_yaml=proposed_yaml,
+            title=f"Plastiglom — proposal {proposal_id}",
+        )
+
+    @app.post("/proposals/{proposal_id}/approve")
+    def proposal_approve(proposal_id: str) -> RedirectResponse:
+        try:
+            record = load_proposal(vault_path, proposal_id)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if record.status is not ProposalStatus.PENDING:
+            raise HTTPException(status_code=409, detail="proposal is not pending")
+        apply_proposal(vault_path, record.proposal, approved_by="user")
+        decide(
+            vault_path,
+            proposal_id,
+            status=ProposalStatus.APPROVED,
+            decided_by="user",
+        )
+        return RedirectResponse(url=f"/proposals/{proposal_id}", status_code=303)
+
+    @app.post("/proposals/{proposal_id}/reject")
+    def proposal_reject(
+        proposal_id: str, note: str = Form(default="")
+    ) -> RedirectResponse:
+        try:
+            record = load_proposal(vault_path, proposal_id)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if record.status is not ProposalStatus.PENDING:
+            raise HTTPException(status_code=409, detail="proposal is not pending")
+        decide(
+            vault_path,
+            proposal_id,
+            status=ProposalStatus.REJECTED,
+            decided_by="user",
+            note=note or None,
+        )
+        return RedirectResponse(url=f"/proposals/{proposal_id}", status_code=303)
+
     return app
+
+
+def _exercise_metadata_yaml(exercise) -> str:
+    import yaml as _yaml
+
+    return _yaml.safe_dump(
+        exercise_to_document(exercise).metadata,
+        sort_keys=False,
+        default_flow_style=False,
+    ).rstrip()
 
 
 def _naive_markdown_to_html(text: str) -> str:
