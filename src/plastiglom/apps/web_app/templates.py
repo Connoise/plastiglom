@@ -36,6 +36,7 @@ _BASE = """\
 <a href="/day/{{ today.isoformat() }}">Index</a>
 <a href="/analysis">Analysis</a>
 <a href="/proposals">Proposals</a>
+<a href="/mobile">Mobile</a>
 </nav>
 <main>
 {% block content %}{% endblock %}
