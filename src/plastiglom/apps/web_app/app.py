@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable
-from datetime import date, datetime
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -60,6 +60,9 @@ def create_app(
     now: Callable[[], datetime] | None = None,
     analyzer: AnalyzerLike | None = None,
     on_change: Callable[[Path], None] | None = None,
+    morning_fire: time | None = None,
+    evening_fire: time | None = None,
+    telegram_configured: bool = False,
 ) -> FastAPI:
     """Build the FastAPI app.
 
@@ -297,6 +300,35 @@ def create_app(
         now_ = clock()
         items = [_entry_summary(e, now_) for e in gathered[: max(1, min(limit, 200))]]
         return JSONResponse({"entries": items})
+
+    @app.get("/api/info")
+    def api_info() -> JSONResponse:
+        entries_root = vault_path / "entries"
+        analysis_root = vault_path / "analysis"
+        proposals_root = vault_path / "proposals"
+        entries_count = sum(1 for _ in entries_root.rglob("*.md")) if entries_root.exists() else 0
+        analysis_count = sum(1 for _ in analysis_root.rglob("*.md")) if analysis_root.exists() else 0
+        proposals_pending = 0
+        if proposals_root.exists():
+            try:
+                proposals_pending = sum(
+                    1 for r in list_proposals(vault_path)
+                    if r.status is ProposalStatus.PENDING
+                )
+            except Exception:
+                proposals_pending = 0
+        return JSONResponse({
+            "version": "0.0.1",
+            "timezone": str(tz),
+            "morning_fire": morning_fire.strftime("%H:%M") if morning_fire else None,
+            "evening_fire": evening_fire.strftime("%H:%M") if evening_fire else None,
+            "telegram_configured": bool(telegram_configured),
+            "vault_path": str(vault_path),
+            "entries_count": entries_count,
+            "analysis_count": analysis_count,
+            "proposals_pending": proposals_pending,
+            "now": clock().isoformat(),
+        })
 
     @app.get("/api/analysis")
     def api_analysis() -> JSONResponse:

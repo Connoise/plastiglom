@@ -21,7 +21,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     settings = load_settings()
-    app = create_app(vault_path=settings.vault_path, tz=settings.timezone)
+    app = create_app(
+        vault_path=settings.vault_path,
+        tz=settings.timezone,
+        morning_fire=settings.morning_fire,
+        evening_fire=settings.evening_fire,
+        telegram_configured=bool(settings.telegram_bot_token and settings.telegram_chat_id),
+    )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0
 

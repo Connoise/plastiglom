@@ -289,11 +289,19 @@ function eveningOrMorning(iso) {
   const h = new Date(iso).getHours();
   return h < 12 ? 'Morning' : 'Evening';
 }
+// Entry titles in the vault are stored as "YYYY-MM-DD - Exercise title".
+// Strip the date prefix for display.
+function displayTitle(title) {
+  if (!title) return '';
+  const m = title.match(/^\d{4}-\d{2}-\d{2}\s*-\s*(.+)$/);
+  return m ? m[1] : title;
+}
 
 // ═══ Screen 1 — Daily Exercise Prompt ═══════════════════════════
 function ScreenPrompt({ theme, t, entry, loading, onOpen, onTab }) {
   return (
-    <div style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden' }}>
+    <div style={{ position: 'relative', minHeight: '100vh',
+                  paddingBottom: 180, overflow: 'hidden' }}>
       <PGSubstrate theme={theme} intensity={t.substrate} seed={3} />
 
       <PGAppBar
@@ -315,13 +323,14 @@ function ScreenPrompt({ theme, t, entry, loading, onOpen, onTab }) {
       />
 
       <div style={{ padding: '10px 18px 0' }}>
-        <FusedPanel theme={theme} variant={1} style={{ minHeight: 440, padding: '40px 28px' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 6, marginBottom: 18 }}>
+        <FusedPanel theme={theme} variant={1} style={{ padding: '32px 26px 26px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 4, marginBottom: 16 }}>
             <IconStar size={22} style={{ color: theme.gold }} />
           </div>
 
           {loading && (
             <div style={{ textAlign: 'center', color: theme.textDim,
+                          padding: '24px 0',
                           fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>
               Loading…
             </div>
@@ -329,7 +338,7 @@ function ScreenPrompt({ theme, t, entry, loading, onOpen, onTab }) {
 
           {!loading && !entry && (
             <div style={{
-              textAlign: 'center', color: theme.textDim, padding: '48px 8px',
+              textAlign: 'center', color: theme.textDim, padding: '36px 8px',
               fontFamily: 'Fraunces, Georgia, serif', fontSize: 18, lineHeight: 1.5,
             }}>
               No open prompt right now.<br/>
@@ -343,33 +352,32 @@ function ScreenPrompt({ theme, t, entry, loading, onOpen, onTab }) {
             <>
               <div style={{
                 fontFamily: 'Fraunces, Georgia, serif',
-                fontSize: 28, fontWeight: 400, color: theme.text,
-                textAlign: 'center', letterSpacing: -0.4, marginBottom: 22,
-                textWrap: 'balance',
-              }}>{entry.title}</div>
+                fontSize: 26, fontWeight: 400, color: theme.text,
+                textAlign: 'center', letterSpacing: -0.4, marginBottom: 18,
+                textWrap: 'balance', lineHeight: 1.2,
+              }}>{displayTitle(entry.title)}</div>
 
               {entry.prompt_snapshot.map((p, i) => (
                 <div key={i} style={{
                   fontFamily: 'Fraunces, Georgia, serif',
-                  fontSize: i === 0 ? 19 : 17,
+                  fontSize: i === 0 ? 17 : 15,
                   fontWeight: 300,
                   color: i === 0 ? theme.text : theme.textDim,
                   fontStyle: i === 0 ? 'normal' : 'italic',
-                  textAlign: 'center', lineHeight: 1.4,
+                  textAlign: 'center', lineHeight: 1.45,
                   textWrap: 'pretty',
-                  margin: i === 0 ? '0 0 14px' : '0',
+                  marginBottom: i < entry.prompt_snapshot.length - 1 ? 12 : 0,
                 }}>{p}</div>
               ))}
 
               <div style={{
-                display: 'flex', justifyContent: 'center', margin: '22px 0 16px',
+                display: 'flex', justifyContent: 'center', margin: '20px 0 12px',
               }}>
                 <div style={{ width: 30, height: 0.5, background: theme.gold, opacity: 0.7 }} />
               </div>
 
               <div style={{
-                position: 'absolute', bottom: 22, left: 0, right: 0,
-                display: 'flex', justifyContent: 'center', gap: 14,
+                display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap',
                 fontFamily: 'JetBrains Mono, monospace',
                 fontSize: 10, letterSpacing: 0.6,
                 color: theme.textFaint, textTransform: 'uppercase',
@@ -380,42 +388,56 @@ function ScreenPrompt({ theme, t, entry, loading, onOpen, onTab }) {
                 <span style={{ color: theme.gold }}>·</span>
                 <span>locks {fmtTime(entry.lock_at)}</span>
               </div>
+
+              {entry.response && (
+                <div style={{
+                  marginTop: 16, paddingTop: 14,
+                  borderTop: `0.5px solid ${theme.lineSoft}`,
+                  fontFamily: 'JetBrains Mono, monospace',
+                  fontSize: 10.5, letterSpacing: 0.4,
+                  color: theme.sage, textAlign: 'center',
+                }}>response in progress · tap below to continue</div>
+              )}
             </>
           )}
         </FusedPanel>
       </div>
 
+      {/* Action bar — sticky above the tab bar so the response button is
+          always reachable regardless of panel height. */}
       <div style={{
-        margin: '24px 18px 120px',
-        display: 'flex', gap: 10,
+        position: 'fixed', left: 0, right: 0,
+        bottom: 'calc(76px + max(16px, env(safe-area-inset-bottom)))',
+        zIndex: 20, padding: '0 18px',
       }}>
-        <button
-          disabled={!entry}
-          onClick={() => entry && onOpen(entry.id)}
-          style={{
-            flex: 1, height: 56, borderRadius: 14,
-            background: theme.dark ? '#E8E2D2' : '#1A1A1F',
-            color: theme.dark ? '#0A0D10' : '#F8F7F4',
-            border: 0,
-            fontFamily: 'Inter, sans-serif',
-            fontSize: 15, fontWeight: 500, letterSpacing: 0.2,
-            cursor: entry ? 'pointer' : 'not-allowed',
-            opacity: entry ? 1 : 0.5,
-            boxShadow: theme.dark
-              ? '0 6px 18px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,178,58,0.15) inset'
-              : '0 6px 18px rgba(0,0,0,0.18), 0 1px 0 rgba(255,255,255,0.15) inset',
-          }}>{entry?.response ? 'Continue Exercise' : 'Open Exercise'}</button>
-        <button
-          onClick={() => onTab('archive')}
-          style={{
-            width: 56, height: 56, borderRadius: 14,
-            background: theme.dark ? 'rgba(20,25,32,0.7)' : 'rgba(255,254,250,0.85)',
-            border: `0.5px solid ${theme.lineSoft}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: theme.text, cursor: 'pointer',
-          }}>
-          <IconArchive size={22} />
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            disabled={!entry}
+            onClick={() => entry && onOpen(entry.id)}
+            style={{
+              flex: 1, height: 56, borderRadius: 14,
+              background: entry ? theme.amber : (theme.dark ? '#2A313B' : '#C8C5BE'),
+              color: entry ? (theme.dark ? '#0A0D10' : '#FFFEFA') : theme.textFaint,
+              border: 0,
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 15, fontWeight: 600, letterSpacing: 0.2,
+              cursor: entry ? 'pointer' : 'not-allowed',
+              boxShadow: entry ? '0 8px 24px rgba(255,178,58,0.35)' : 'none',
+            }}>{!entry ? 'No open exercise' : (entry.response ? 'Continue response' : 'Write response')}</button>
+          <button
+            onClick={() => onTab('archive')}
+            style={{
+              width: 56, height: 56, borderRadius: 14,
+              background: theme.dark ? 'rgba(20,25,32,0.85)' : 'rgba(255,254,250,0.92)',
+              border: `0.5px solid ${theme.lineSoft}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: theme.text, cursor: 'pointer',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+            }}>
+            <IconArchive size={22} />
+          </button>
+        </div>
       </div>
 
       <PGTabBar theme={theme} active="today" onChange={onTab} />
@@ -497,16 +519,17 @@ function ScreenResponse({ theme, t, entry, onBack, onSubmit, onTab }) {
         }}>
           <IconBack size={18} />
         </button>
-        <div style={{ flex: 1, textAlign: 'center' }}>
+        <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
           <div style={{
             fontFamily: 'Fraunces, Georgia, serif',
             fontSize: 17, color: theme.text, letterSpacing: -0.2,
-          }}>{entry.title}</div>
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{displayTitle(entry.title)}</div>
           <div style={{
             fontFamily: 'JetBrains Mono, monospace',
             fontSize: 9.5, color: theme.textDim, letterSpacing: 0.6,
             textTransform: 'uppercase', marginTop: 2,
-          }}>Main · {eveningOrMorning(entry.timestamp_fired)}</div>
+          }}>Main · {eveningOrMorning(entry.timestamp_fired)} · {fmtDate(entry.timestamp_fired)}</div>
         </div>
         <div style={{ width: 38 }} />
       </div>
@@ -546,19 +569,35 @@ function ScreenResponse({ theme, t, entry, onBack, onSubmit, onTab }) {
         }}>{fmtTime(entry.lock_at)}</div>
       </div>
 
-      {/* Prompt snapshot */}
+      {/* Prompt snapshot — repeats the exercise prompt above the response. */}
       <div style={{
         margin: '12px 18px 0',
-        padding: '14px 16px',
-        borderRadius: 12,
-        background: theme.dark ? 'rgba(15,18,22,0.55)' : 'rgba(255,254,250,0.7)',
+        padding: '16px 18px',
+        borderRadius: 14,
+        background: theme.dark ? 'rgba(20,25,32,0.65)' : 'rgba(255,254,250,0.85)',
         border: `0.5px solid ${theme.lineSoft}`,
-        fontFamily: 'Fraunces, Georgia, serif',
-        fontSize: 14.5, lineHeight: 1.5, color: theme.textDim,
-        fontStyle: 'italic',
+        position: 'relative',
       }}>
+        <div style={{
+          position: 'absolute', top: 10, left: 14,
+          fontFamily: 'JetBrains Mono, monospace',
+          fontSize: 9, letterSpacing: 1, textTransform: 'uppercase',
+          color: theme.gold,
+        }}>Prompt</div>
+        <div style={{
+          fontFamily: 'Fraunces, Georgia, serif',
+          fontSize: 17, fontWeight: 400, color: theme.text,
+          letterSpacing: -0.2, marginTop: 14, marginBottom: 8,
+          textWrap: 'balance', lineHeight: 1.3,
+        }}>{displayTitle(entry.title)}</div>
         {entry.prompt_snapshot.map((p, i) => (
-          <div key={i} style={{ marginBottom: i < entry.prompt_snapshot.length - 1 ? 8 : 0 }}>{p}</div>
+          <div key={i} style={{
+            fontFamily: 'Fraunces, Georgia, serif',
+            fontSize: 14.5, lineHeight: 1.5,
+            color: i === 0 ? theme.text : theme.textDim,
+            fontStyle: i === 0 ? 'normal' : 'italic',
+            marginBottom: i < entry.prompt_snapshot.length - 1 ? 6 : 0,
+          }}>{p}</div>
         ))}
       </div>
 
@@ -623,36 +662,48 @@ function ScreenResponse({ theme, t, entry, onBack, onSubmit, onTab }) {
         }}>{error}</div>
       )}
 
-      {/* Action buttons */}
+      {/* Spacer so the pinned action bar doesn't cover content. */}
+      <div style={{ height: locked ? 140 : 180 }} />
+
+      {/* Action bar — pinned above the tab bar so Submit is always visible. */}
       {!locked && (
         <div style={{
-          margin: '20px 18px 140px',
-          display: 'flex', gap: 8,
+          position: 'fixed', left: 0, right: 0,
+          bottom: 'calc(76px + max(16px, env(safe-area-inset-bottom)))',
+          zIndex: 20, padding: '0 18px',
         }}>
-          <button onClick={onBack} style={{
-            flex: 1, height: 44, borderRadius: 12,
-            background: theme.dark ? 'rgba(20,25,32,0.8)' : 'rgba(255,254,250,0.9)',
-            color: theme.text, border: `0.5px solid ${theme.lineSoft}`,
-            fontSize: 13.5, fontWeight: 500, fontFamily: 'Inter, sans-serif',
-            cursor: 'pointer',
-          }}>Cancel</button>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            style={{
-              flex: 1.4, height: 44, borderRadius: 12,
-              background: theme.amber,
-              color: theme.dark ? '#0A0D10' : '#FFFEFA',
-              border: 0,
-              fontSize: 13.5, fontWeight: 600, fontFamily: 'Inter, sans-serif',
-              letterSpacing: 0.2, cursor: submitting ? 'wait' : 'pointer',
-              boxShadow: '0 4px 14px rgba(255,178,58,0.30)',
-              opacity: submitting ? 0.7 : 1,
-            }}>{submitting ? 'Submitting…' : (entry.response ? 'Update' : 'Submit')}</button>
+          <div style={{
+            display: 'flex', gap: 8,
+            padding: 8, borderRadius: 16,
+            background: theme.chrome,
+            backdropFilter: 'blur(18px) saturate(160%)',
+            WebkitBackdropFilter: 'blur(18px) saturate(160%)',
+            border: `0.5px solid ${theme.chromeBd}`,
+            boxShadow: theme.dark
+              ? '0 -2px 24px rgba(0,0,0,0.5)' : '0 -2px 16px rgba(0,0,0,0.06)',
+          }}>
+            <button onClick={onBack} style={{
+              flex: 1, height: 44, borderRadius: 10,
+              background: theme.dark ? 'rgba(20,25,32,0.6)' : 'rgba(255,254,250,0.7)',
+              color: theme.text, border: `0.5px solid ${theme.lineSoft}`,
+              fontSize: 13.5, fontWeight: 500, fontFamily: 'Inter, sans-serif',
+              cursor: 'pointer',
+            }}>Cancel</button>
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              style={{
+                flex: 1.6, height: 44, borderRadius: 10,
+                background: theme.amber,
+                color: theme.dark ? '#0A0D10' : '#FFFEFA',
+                border: 0,
+                fontSize: 14, fontWeight: 600, fontFamily: 'Inter, sans-serif',
+                letterSpacing: 0.2, cursor: submitting ? 'wait' : 'pointer',
+                boxShadow: '0 4px 14px rgba(255,178,58,0.30)',
+                opacity: submitting ? 0.7 : 1,
+              }}>{submitting ? 'Submitting…' : (entry.response ? 'Update response' : 'Submit response')}</button>
+          </div>
         </div>
-      )}
-      {locked && (
-        <div style={{ height: 140 }} />
       )}
 
       <PGTabBar theme={theme} active="today" onChange={onTab} />
@@ -670,9 +721,10 @@ function ScreenArchive({ theme, t, entries, loading, onOpen, onTab }) {
     if (active === 'Submitted' && e.status !== 'submitted') return false;
     if (active === 'Open' && e.status !== 'opened_unresponded') return false;
     if (active === 'Null' && e.status !== 'null') return false;
-    if (query && !e.title.toLowerCase().includes(query.toLowerCase())
-        && !(e.tags || []).some((tag) => tag.toLowerCase().includes(query.toLowerCase()))) {
-      return false;
+    if (query) {
+      const q = query.toLowerCase();
+      const haystack = (displayTitle(e.title) + ' ' + (e.tags || []).join(' ')).toLowerCase();
+      if (!haystack.includes(q)) return false;
     }
     return true;
   });
@@ -802,7 +854,7 @@ function ScreenArchive({ theme, t, entries, loading, onOpen, onTab }) {
               <div style={{
                 fontFamily: 'Fraunces, Georgia, serif',
                 fontSize: 17, color: theme.text, marginBottom: 8, letterSpacing: -0.2,
-              }}>{e.title}</div>
+              }}>{displayTitle(e.title)}</div>
               {e.tags && e.tags.length > 0 && (
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                   {e.tags.slice(0, 4).map((tag) => <Tag key={tag} theme={theme}>{tag}</Tag>)}
@@ -918,8 +970,46 @@ function ScreenAnalysis({ theme, t, groups, loading, onTab }) {
 }
 
 // ═══ Screen 5 — Settings ════════════════════════════════════════
-function ScreenSettings({ theme, t, themePref, onThemePref, onTab }) {
-  const [notif, setNotif] = React.useState(true);
+function ScreenSettings({ theme, t, themePref, onThemePref, info, infoLoading, onTab }) {
+  const [substrate, setSubstrate] = React.useState(() => {
+    const v = parseFloat(localStorage.getItem('pg-substrate'));
+    return Number.isFinite(v) ? v : 0.55;
+  });
+  React.useEffect(() => {
+    localStorage.setItem('pg-substrate', String(substrate));
+    if (t) t.substrate = substrate;
+  }, [substrate, t]);
+
+  const [draftCount, setDraftCount] = React.useState(0);
+  const refreshDraftCount = React.useCallback(() => {
+    let n = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('pg-draft:')) n++;
+    }
+    setDraftCount(n);
+  }, []);
+  React.useEffect(() => { refreshDraftCount(); }, [refreshDraftCount]);
+
+  const clearDrafts = () => {
+    if (!confirm(`Clear ${draftCount} local draft${draftCount === 1 ? '' : 's'}? Submitted entries are unaffected.`)) return;
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('pg-draft:')) keys.push(k);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+    refreshDraftCount();
+  };
+
+  const morning = info?.morning_fire || '07:30';
+  const evening = info?.evening_fire || '21:00';
+  const tzLabel = info?.timezone || '—';
+  const vault = info?.vault_path || '—';
+  const entries = info?.entries_count ?? '—';
+  const analyses = info?.analysis_count ?? '—';
+  const proposals = info?.proposals_pending ?? '—';
+  const telegram = info?.telegram_configured;
 
   return (
     <div style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden' }}>
@@ -942,6 +1032,7 @@ function ScreenSettings({ theme, t, themePref, onThemePref, onTab }) {
 
         <SettingsGroup theme={theme} label="Appearance">
           <SettingsRow theme={theme} label="Theme"
+                       hint="Auto follows your device's dark/light setting."
                        trailing={
                          <select
                            value={themePref}
@@ -957,21 +1048,83 @@ function ScreenSettings({ theme, t, themePref, onThemePref, onTab }) {
                            <option value="dark">Dark</option>
                          </select>
                        } />
+          <SettingsRow theme={theme} label="Background intensity"
+                       hint="Density of the circuit-board texture behind cards."
+                       trailing={
+                         <input type="range" min="0" max="1" step="0.05"
+                                value={substrate}
+                                onChange={(e) => setSubstrate(parseFloat(e.target.value))}
+                                style={{ width: 110, accentColor: theme.amber }} />
+                       } isLast />
         </SettingsGroup>
 
-        <SettingsGroup theme={theme} label="Main exercise time">
+        <SettingsGroup theme={theme} label="Schedule">
           <SettingsRow theme={theme} icon={<IconSun size={18} style={{color: theme.amber}} />}
-                       label="Morning" detail="07:30" />
+                       label="Morning fire" detail={morning}
+                       hint="When the morning main exercise becomes available." />
           <SettingsRow theme={theme} icon={<IconMoon size={18} style={{color: theme.textDim}} />}
-                       label="Evening" detail="21:00" />
+                       label="Evening fire" detail={evening}
+                       hint="When the evening main exercise becomes available." />
+          <SettingsRow theme={theme} label="Timezone" detail={tzLabel}
+                       hint="Set with PLASTIGLOM_TIMEZONE in your .env." isLast />
         </SettingsGroup>
 
-        <SettingsGroup theme={theme} label="Reminders">
-          <SettingsRow theme={theme} icon={<IconBell size={18} style={{color: theme.textDim}} />}
-                       label="Reminder before main" detail="15 min before" />
-          <SettingsRow theme={theme} label="Missed reminder follow-up" detail="2 hours later" />
-          <SettingsRow theme={theme} label="Enable notifications"
-                       trailing={<Toggle theme={theme} value={notif} onChange={setNotif} />} />
+        <SettingsGroup theme={theme} label="Notifications">
+          <SettingsRow theme={theme}
+                       icon={<IconTelegram size={18} style={{ color: telegram ? theme.amber : theme.textDim }} />}
+                       label="Telegram delivery"
+                       detail={telegram ? 'configured' : 'not configured'}
+                       hint={telegram
+                         ? 'Bot will deliver fire reminders.'
+                         : 'Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to enable.'} isLast />
+        </SettingsGroup>
+
+        <SettingsGroup theme={theme} label="Vault">
+          <SettingsRow theme={theme}
+                       icon={<IconLock size={18} style={{color: theme.amber}} />}
+                       label="Vault path"
+                       detail={
+                         <span style={{ maxWidth: 180, display: 'inline-block',
+                                        overflow: 'hidden', textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap' }}
+                               title={vault}>{vault}</span>
+                       }
+                       hint="Local-first. All entries and analysis live here." />
+          <SettingsRow theme={theme} label="Entries archived" detail={String(entries)} />
+          <SettingsRow theme={theme} label="Analysis reports" detail={String(analyses)} />
+          <SettingsRow theme={theme} label="Pending proposals" detail={String(proposals)}
+                       isLast />
+        </SettingsGroup>
+
+        <SettingsGroup theme={theme} label="Local data">
+          <SettingsRow theme={theme}
+                       label="Unsent drafts on this device"
+                       detail={String(draftCount)}
+                       hint="Drafts live in browser storage until you submit." />
+          <SettingsRow theme={theme} label="Clear local drafts"
+                       trailing={
+                         <button onClick={clearDrafts} disabled={draftCount === 0}
+                                 style={{
+                                   height: 30, padding: '0 12px', borderRadius: 8,
+                                   background: draftCount > 0
+                                     ? theme.amber
+                                     : (theme.dark ? 'rgba(20,25,32,0.5)' : 'rgba(220,217,211,0.6)'),
+                                   color: draftCount > 0
+                                     ? (theme.dark ? '#0A0D10' : '#FFFEFA')
+                                     : theme.textFaint,
+                                   border: 0, fontSize: 12, fontWeight: 600,
+                                   fontFamily: 'Inter, sans-serif',
+                                   cursor: draftCount > 0 ? 'pointer' : 'not-allowed',
+                                 }}>Clear</button>
+                       } isLast />
+        </SettingsGroup>
+
+        <SettingsGroup theme={theme} label="Browse on desktop">
+          <SettingsRow theme={theme} label="Today" trailing={<LinkChevron theme={theme} href="/" />} />
+          <SettingsRow theme={theme} label="Analysis"
+                       trailing={<LinkChevron theme={theme} href="/analysis" />} />
+          <SettingsRow theme={theme} label="Proposals"
+                       trailing={<LinkChevron theme={theme} href="/proposals" />} isLast />
         </SettingsGroup>
 
         <FusedPanel theme={theme} variant={4} style={{ padding: '14px 16px' }} seam={false}>
@@ -981,7 +1134,7 @@ function ScreenSettings({ theme, t, themePref, onThemePref, onTab }) {
               background: theme.dark ? 'rgba(255,178,58,0.10)' : 'rgba(201,128,44,0.10)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: theme.amber,
-            }}><IconLock size={17} /></div>
+            }}><IconPrivateVault size={17} /></div>
             <div style={{ flex: 1 }}>
               <div style={{
                 fontSize: 13, fontWeight: 600, color: theme.text,
@@ -990,7 +1143,7 @@ function ScreenSettings({ theme, t, themePref, onThemePref, onTab }) {
               <div style={{
                 fontSize: 11, color: theme.textDim, marginTop: 2,
                 fontFamily: 'Inter, sans-serif',
-              }}>Your data stays on this device.</div>
+              }}>Entries never leave your device or vault.</div>
             </div>
           </div>
         </FusedPanel>
@@ -1000,16 +1153,28 @@ function ScreenSettings({ theme, t, themePref, onThemePref, onTab }) {
           fontFamily: 'JetBrains Mono, monospace',
           fontSize: 10, lineHeight: 1.7, color: theme.textFaint, letterSpacing: 0.3,
         }}>
-          <div>· main exercise fires at set times</div>
-          <div>· response editable until next main fire</div>
-          <div>· all data is private and stored locally</div>
-          <div>· analysis is generated on-device</div>
-          <div>· telegram used only for notifications</div>
+          <div>· main exercises fire at the times above</div>
+          <div>· responses are editable until the next main fires</div>
+          <div>· locked entries are read-only and archived in your vault</div>
+          <div>· analysis runs against your vault, never the public repo</div>
+          <div>· build · plastiglom v{info?.version || '0.0.1'}{infoLoading ? ' · loading…' : ''}</div>
         </div>
       </div>
 
       <PGTabBar theme={theme} active="settings" onChange={onTab} />
     </div>
+  );
+}
+
+function LinkChevron({ theme, href }) {
+  return (
+    <a href={href} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      color: theme.amber, textDecoration: 'none',
+      fontSize: 12, fontFamily: 'Inter, sans-serif', fontWeight: 500,
+    }}>
+      Open <IconChevron size={12} />
+    </a>
   );
 }
 
@@ -1030,31 +1195,42 @@ function SettingsGroup({ theme, label, children }) {
   );
 }
 
-function SettingsRow({ theme, icon, label, detail, trailing }) {
+function SettingsRow({ theme, icon, label, detail, trailing, hint, isLast }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '12px 14px', minHeight: 46,
-      borderBottom: `0.5px solid ${theme.lineSoft}`,
+      padding: '12px 14px',
+      borderBottom: isLast ? 'none' : `0.5px solid ${theme.lineSoft}`,
     }}>
-      {icon && (
-        <div style={{
-          width: 28, height: 28, borderRadius: 7,
-          background: theme.dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>{icon}</div>
-      )}
       <div style={{
-        flex: 1, fontSize: 13.5, color: theme.text,
-        fontFamily: 'Inter, sans-serif',
-      }}>{label}</div>
-      {detail && (
+        display: 'flex', alignItems: 'center', gap: 12, minHeight: 28,
+      }}>
+        {icon && (
+          <div style={{
+            width: 28, height: 28, borderRadius: 7,
+            background: theme.dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>{icon}</div>
+        )}
         <div style={{
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: 12, color: theme.textDim, letterSpacing: 0.3,
-        }}>{detail}</div>
+          flex: 1, fontSize: 13.5, color: theme.text,
+          fontFamily: 'Inter, sans-serif',
+        }}>{label}</div>
+        {detail !== undefined && detail !== null && (
+          <div style={{
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: 12, color: theme.textDim, letterSpacing: 0.3,
+          }}>{detail}</div>
+        )}
+        {trailing}
+      </div>
+      {hint && (
+        <div style={{
+          marginTop: 4, marginLeft: icon ? 40 : 0,
+          fontSize: 11, lineHeight: 1.4, color: theme.textFaint,
+          fontFamily: 'Inter, sans-serif',
+        }}>{hint}</div>
       )}
-      {trailing}
     </div>
   );
 }
