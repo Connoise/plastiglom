@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -99,6 +99,40 @@ def test_api_archive_lists_entries(vault, fired_fixture):
     entries = r.json()["entries"]
     assert len(entries) >= 1
     assert "Evening review" in entries[0]["title"]
+
+
+def test_api_info(vault, fired_fixture):
+    fired, _ = fired_fixture
+    app = create_app(
+        vault_path=vault,
+        tz=TZ,
+        now=lambda: fired + timedelta(minutes=5),
+        morning_fire=time(7, 30),
+        evening_fire=time(21, 0),
+        telegram_configured=True,
+    )
+    client = TestClient(app)
+    r = client.get("/api/info")
+    assert r.status_code == 200
+    j = r.json()
+    assert j["timezone"] == "UTC"
+    assert j["morning_fire"] == "07:30"
+    assert j["evening_fire"] == "21:00"
+    assert j["telegram_configured"] is True
+    assert j["entries_count"] >= 1
+    assert j["analysis_count"] == 0
+    assert j["proposals_pending"] == 0
+    assert j["version"]
+
+
+def test_api_info_defaults_when_unconfigured(vault):
+    client = _client(vault, datetime(2026, 5, 14, 21, 5, tzinfo=UTC))
+    r = client.get("/api/info")
+    assert r.status_code == 200
+    j = r.json()
+    assert j["morning_fire"] is None
+    assert j["evening_fire"] is None
+    assert j["telegram_configured"] is False
 
 
 def test_api_analysis_empty_vault(vault):

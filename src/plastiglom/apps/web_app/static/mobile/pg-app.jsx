@@ -48,6 +48,8 @@ function App() {
   const [archiveLoading, setArchiveLoading] = React.useState(false);
   const [analysis, setAnalysis] = React.useState([]);
   const [analysisLoading, setAnalysisLoading] = React.useState(false);
+  const [info, setInfo] = React.useState(null);
+  const [infoLoading, setInfoLoading] = React.useState(false);
   const [activeEntry, setActiveEntry] = React.useState(null);
   const [themePref, setThemePref, dark] = useThemePref();
 
@@ -89,11 +91,24 @@ function App() {
     }
   }, []);
 
+  const refreshInfo = React.useCallback(async () => {
+    setInfoLoading(true);
+    try {
+      const j = await apiGet('/api/info');
+      setInfo(j);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setInfoLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => { refreshToday(); }, [refreshToday]);
   React.useEffect(() => {
     if (route.tab === 'archive') refreshArchive();
     if (route.tab === 'analysis') refreshAnalysis();
-  }, [route.tab, refreshArchive, refreshAnalysis]);
+    if (route.tab === 'settings') refreshInfo();
+  }, [route.tab, refreshArchive, refreshAnalysis, refreshInfo]);
 
   // Load active entry when entryId changes.
   React.useEffect(() => {
@@ -180,6 +195,8 @@ function App() {
         theme={theme} t={TWEAKS}
         themePref={themePref}
         onThemePref={setThemePref}
+        info={info}
+        infoLoading={infoLoading}
         onTab={onTab}
       />
     );
