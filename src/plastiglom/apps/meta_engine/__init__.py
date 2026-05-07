@@ -15,7 +15,9 @@ from plastiglom.apps.meta_engine.proposals import (
     ExerciseProposal,
     ProposalAction,
     apply_proposal,
+    load_active_pool,
     record_history,
+    validate_exercise_for_action,
 )
 from plastiglom.apps.meta_engine.queue import (
     ProposalRecord,
@@ -42,6 +44,7 @@ __all__ = [
     "decide",
     "detect_blind_spots",
     "list_proposals",
+    "load_active_pool",
     "load_proposal",
     "make_proposal_id",
     "make_record",
@@ -49,4 +52,5 @@ __all__ = [
     "proposal_path",
     "record_history",
     "save_proposal",
+    "validate_exercise_for_action",
 ]

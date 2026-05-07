@@ -181,17 +181,23 @@ _PROPOSAL_VIEW = """\
 </p>
 
 <h2>Rationale</h2>
-<p>{{ record.proposal.rationale }}</p>
+<p style="white-space: pre-wrap;">{{ record.proposal.rationale }}</p>
 
 {% if record.proposal.diff %}
 <h2>Diff</h2>
 <pre>{{ record.proposal.diff }}</pre>
 {% endif %}
 
-<h2>Proposed exercise</h2>
-<pre>{{ proposed_yaml }}</pre>
-
 {% if record.status.value == 'pending' %}
+<h2>Refine the proposed exercise</h2>
+<p class="meta">Edit the YAML below before approving. Id and action stay fixed —
+to change those, reject and request a new proposal.</p>
+<form method="post" action="/proposals/{{ record.id }}/refine">
+<textarea name="exercise_yaml" style="min-height: 22rem; font-family: monospace;">{{ proposed_yaml }}</textarea>
+<input type="text" name="rationale_addendum" placeholder="(optional) note explaining your refinement" style="width:100%; margin-top:0.5rem;">
+<button type="submit">Save refinement</button>
+</form>
+
 <h2>Decision</h2>
 <form method="post" action="/proposals/{{ record.id }}/approve" style="display:inline">
 <button type="submit">Approve & apply</button>
@@ -200,9 +206,13 @@ _PROPOSAL_VIEW = """\
 <input type="text" name="note" placeholder="(optional) reason" style="width:14rem;">
 <button type="submit">Reject</button>
 </form>
-{% elif record.decision_note %}
+{% else %}
+<h2>Proposed exercise</h2>
+<pre>{{ proposed_yaml }}</pre>
+{% if record.decision_note %}
 <h2>Decision note</h2>
 <p>{{ record.decision_note }}</p>
+{% endif %}
 {% endif %}
 {% endblock %}
 """

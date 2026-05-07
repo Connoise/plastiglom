@@ -32,9 +32,13 @@ from plastiglom.apps.archiver.archiver import Archiver, SubmitRequest
 from plastiglom.apps.meta_engine import (
     ProposalStatus,
     apply_proposal,
+    compute_diff,
     decide,
     list_proposals,
+    load_active_pool,
     load_proposal,
+    save_proposal,
+    validate_exercise_for_action,
 )
 from plastiglom.apps.web_app.analysis_view import (
     list_analysis,
@@ -46,8 +50,11 @@ from plastiglom.apps.web_app.lookup import (
     load_entry,
 )
 from plastiglom.apps.web_app.templates import build_env
-from plastiglom.packages.vault.markdown import read_markdown_file
-from plastiglom.packages.vault.serializers import exercise_to_document
+from plastiglom.packages.vault.markdown import FrontmatterDocument, read_markdown_file
+from plastiglom.packages.vault.serializers import (
+    exercise_from_document,
+    exercise_to_document,
+)
 
 
 class AnalyzerLike(Protocol):
@@ -196,6 +203,66 @@ def create_app(
             proposed_yaml=proposed_yaml,
             title=f"Plastiglom — proposal {proposal_id}",
         )
+
+    @app.post("/proposals/{proposal_id}/refine")
+    def proposal_refine(
+        proposal_id: str,
+        exercise_yaml: str = Form(...),
+        rationale_addendum: str = Form(default=""),
+    ) -> RedirectResponse:
+        """Replace a pending proposal's exercise with a user-edited version.
+
+        Per §11 the user always refines before approving — Opus drafts, the
+        user has the final say. We re-validate the YAML against the same
+        per-action invariants the generator enforces, recompute the diff,
+        and persist the record back as still-pending. The exercise id and
+        action stay fixed; changing those means a different proposal, which
+        the user should reject and re-request.
+        """
+        try:
+            record = load_proposal(vault_path, proposal_id)
+        except (ValueError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if record.status is not ProposalStatus.PENDING:
+            raise HTTPException(status_code=409, detail="proposal is not pending")
+
+        try:
+            edited = _parse_exercise_yaml(exercise_yaml)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        if edited.id != record.proposal.exercise.id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "exercise id is fixed for refinement; reject this proposal "
+                    "and request a new one if you want a different target"
+                ),
+            )
+
+        pool_by_id = {ex.id: ex for ex in load_active_pool(vault_path / "exercises")}
+        try:
+            prior_version = validate_exercise_for_action(
+                edited,
+                record.proposal.action,
+                pool_by_id=pool_by_id,
+                prior_version=record.proposal.prior_version,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        prior = pool_by_id.get(edited.id)
+        record.proposal.exercise = edited
+        record.proposal.prior_version = prior_version
+        record.proposal.diff = compute_diff(prior, edited)
+        if rationale_addendum.strip():
+            record.proposal.rationale = (
+                record.proposal.rationale.rstrip()
+                + "\n\n[refined by user]: "
+                + rationale_addendum.strip()
+            )
+        save_proposal(vault_path, record)
+        return RedirectResponse(url=f"/proposals/{proposal_id}", status_code=303)
 
     @app.post("/proposals/{proposal_id}/approve")
     def proposal_approve(proposal_id: str) -> RedirectResponse:
@@ -414,6 +481,23 @@ def _exercise_metadata_yaml(exercise) -> str:
         sort_keys=False,
         default_flow_style=False,
     ).rstrip()
+
+
+def _parse_exercise_yaml(text: str):
+    """Parse a YAML block back into an Exercise. Raises ValueError on bad input."""
+    import yaml as _yaml
+    from pydantic import ValidationError
+
+    try:
+        meta = _yaml.safe_load(text)
+    except _yaml.YAMLError as exc:
+        raise ValueError(f"invalid YAML: {exc}") from exc
+    if not isinstance(meta, dict):
+        raise ValueError("exercise YAML must be a mapping")
+    try:
+        return exercise_from_document(FrontmatterDocument(metadata=meta, content=""))
+    except (KeyError, ValidationError, ValueError) as exc:
+        raise ValueError(f"invalid exercise: {exc}") from exc
 
 
 def _naive_markdown_to_html(text: str) -> str:
