@@ -15,3 +15,22 @@ build/
 .coverage
 htmlcov/
 *.log
+
+# ── Local personalisation — never push these ─────────────────────────────────
+#
+# Exercise definitions live here as initial templates, but over time they drift
+# with personal use (prompts reworded, weights tuned, new exercises added).
+# The runtime scheduler loads exercises from PLASTIGLOM_VAULT_PATH/exercises,
+# not from this directory; these files are only a starting point for seeding.
+# Keep them local-only so diffs from personalisation don't leak to the repo.
+exercises/main/
+exercises/secondary/
+
+# Personalised seed YAMLs (created by copying the *.example files and filling
+# in real values). The *.example counterparts stay tracked as safe templates.
+exercises/seed_memory.yaml
+exercises/seed_tagpool.yaml
+
+# Any other local data directories that might appear at the repo root.
+data/
+local/
