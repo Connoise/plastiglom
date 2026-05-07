@@ -11,7 +11,7 @@ import argparse
 import logging
 import random
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from plastiglom.apps.archiver.archiver import Archiver, FireEvent
@@ -29,6 +29,12 @@ logger = logging.getLogger(__name__)
 # ~3-4 days and still leaves ample candidates for the weighted draw.
 RECENT_FIRINGS_LOOKBACK = 7
 
+# Per §7.1: at most three secondaries per day. We let at most one fire on
+# each scheduler invocation so the user isn't blasted with two prompts at
+# once; the daily cap still applies across invocations.
+SECONDARIES_PER_DAY = 3
+SECONDARIES_PER_FIRING = 1
+
 
 def _load_active_main(exercises_dir: Path) -> list:
     main_dir = exercises_dir / "main"
@@ -44,6 +50,51 @@ def _load_active_main(exercises_dir: Path) -> list:
         if exercise.status is ExerciseStatus.ACTIVE and exercise.category is ExerciseCategory.MAIN:
             pool.append(exercise)
     return pool
+
+
+def _load_active_secondary(exercises_dir: Path) -> list:
+    sec_dir = exercises_dir / "secondary"
+    if not sec_dir.exists():
+        return []
+    pool = []
+    for path in sorted(sec_dir.glob("*.md")):
+        try:
+            exercise = exercise_from_document(read_markdown_file(path))
+        except Exception as exc:  # pragma: no cover
+            logger.warning("skipping exercise %s: %s", path, exc)
+            continue
+        if (
+            exercise.status is ExerciseStatus.ACTIVE
+            and exercise.category is ExerciseCategory.SECONDARY
+        ):
+            pool.append(exercise)
+    return pool
+
+
+def _todays_firings(entries_root: Path, day: date) -> tuple[set[str], set[str]]:
+    """Return (main_ids_fired_today, secondary_ids_fired_today).
+
+    Used to gate secondary picks: a secondary is only eligible if its parent
+    main has already fired today, and we never fire the same secondary twice.
+    Reads only the day's directory rather than the full tree.
+    """
+    main_ids: set[str] = set()
+    sec_ids: set[str] = set()
+    day_dir = (
+        entries_root / f"{day.year:04d}" / f"{day.month:02d}"
+    )
+    if not day_dir.exists():
+        return main_ids, sec_ids
+    for md_path in day_dir.glob(f"{day.day:02d}-*.md"):
+        try:
+            entry = parse_entry(read_markdown_file(md_path))
+        except Exception:
+            continue
+        if entry.exercise_id.startswith("main-"):
+            main_ids.add(entry.exercise_id)
+        elif entry.exercise_id.startswith("secondary-"):
+            sec_ids.add(entry.exercise_id)
+    return main_ids, sec_ids
 
 
 def _recent_main_exercise_ids(entries_root: Path, *, limit: int) -> set[str]:
@@ -70,6 +121,11 @@ def _recent_main_exercise_ids(entries_root: Path, *, limit: int) -> set[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fire the next main exercise.")
     parser.add_argument("--dry-run", action="store_true", help="Pick but do not write.")
+    parser.add_argument(
+        "--no-secondaries",
+        action="store_true",
+        help="Skip the secondary-exercise pass after firing the main.",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -109,7 +165,53 @@ def main(argv: list[str] | None = None) -> int:
     archiver.finalize_prior(now)
     entry = archiver.on_fire(FireEvent(exercise=exercise, fired_at=now, lock_at=lock_at))
     logger.info("fired entry=%s", entry.id)
+
+    if not args.no_secondaries:
+        _fire_eligible_secondaries(
+            archiver=archiver,
+            scheduler=scheduler,
+            settings=settings,
+            now=now,
+            lock_at=lock_at,
+        )
     return 0
+
+
+def _fire_eligible_secondaries(
+    *,
+    archiver: Archiver,
+    scheduler: Scheduler,
+    settings,
+    now: datetime,
+    lock_at: datetime,
+) -> None:
+    """Pick and fire context-triggered secondaries.
+
+    A secondary fires only when its parent main has already fired earlier
+    today. Capped per-firing and per-day per §7.1; lock_at matches the
+    main's so the day's edits seal together.
+    """
+    secondary_pool = _load_active_secondary(settings.exercises_dir)
+    if not secondary_pool:
+        return
+
+    parents_fired, secondaries_fired = _todays_firings(settings.entries_dir, now.date())
+    remaining_today = SECONDARIES_PER_DAY - len(secondaries_fired)
+    if remaining_today <= 0:
+        return
+
+    picks = scheduler.select_secondaries(
+        secondary_pool,
+        when=now,
+        parent_ids_fired_today=parents_fired,
+        already_fired_secondary_ids=secondaries_fired,
+        max_count=min(SECONDARIES_PER_FIRING, remaining_today),
+    )
+    for secondary in picks:
+        sec_entry = archiver.on_fire(
+            FireEvent(exercise=secondary, fired_at=now, lock_at=lock_at)
+        )
+        logger.info("fired secondary=%s entry=%s", secondary.id, sec_entry.id)
 
 
 if __name__ == "__main__":
