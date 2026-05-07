@@ -1002,14 +1002,17 @@ function ScreenSettings({ theme, t, themePref, onThemePref, info, infoLoading, o
     refreshDraftCount();
   };
 
-  const morning = info?.morning_fire || '07:30';
-  const evening = info?.evening_fire || '21:00';
-  const tzLabel = info?.timezone || '—';
-  const vault = info?.vault_path || '—';
-  const entries = info?.entries_count ?? '—';
-  const analyses = info?.analysis_count ?? '—';
-  const proposals = info?.proposals_pending ?? '—';
-  const telegram = info?.telegram_configured;
+  const safe = info || {};
+  const orDash = (v) => (v === undefined || v === null ? '—' : v);
+  const morning = safe.morning_fire || '—';
+  const evening = safe.evening_fire || '—';
+  const tzLabel = safe.timezone || '—';
+  const vault = safe.vault_path || '—';
+  const entries = orDash(safe.entries_count);
+  const analyses = orDash(safe.analysis_count);
+  const proposals = orDash(safe.proposals_pending);
+  const telegram = !!safe.telegram_configured;
+  const version = safe.version || '0.0.1';
 
   return (
     <div style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden' }}>
@@ -1157,7 +1160,7 @@ function ScreenSettings({ theme, t, themePref, onThemePref, info, infoLoading, o
           <div>· responses are editable until the next main fires</div>
           <div>· locked entries are read-only and archived in your vault</div>
           <div>· analysis runs against your vault, never the public repo</div>
-          <div>· build · plastiglom v{info?.version || '0.0.1'}{infoLoading ? ' · loading…' : ''}</div>
+          <div>· build · plastiglom v{version}{infoLoading ? ' · loading…' : ''}</div>
         </div>
       </div>
 

@@ -15,6 +15,7 @@ which enforces `lock_at`.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from collections.abc import Callable
 from datetime import date, datetime, time
@@ -22,8 +23,8 @@ from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from fastapi import Body, FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import Body, FastAPI, Form, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from plastiglom.apps.analyzer import AnalysisRequest, correction_request
@@ -233,13 +234,40 @@ def create_app(
         return RedirectResponse(url=f"/proposals/{proposal_id}", status_code=303)
 
     # ─── Mobile UI ──────────────────────────────────────────────────
-    mobile_index = static_dir / "mobile" / "index.html"
+    mobile_dir = static_dir / "mobile"
+    mobile_index = mobile_dir / "index.html"
+
+    def _mobile_build_version() -> str:
+        """Aggregate mtime of all mobile assets — used to bust browser caches.
+
+        Babel-compiled <script type="text/babel"> output is cached aggressively
+        by mobile browsers, so a query-string version that changes whenever any
+        JSX file changes guarantees the latest UI is loaded after a deploy.
+        """
+        if not mobile_dir.is_dir():
+            return "0"
+        latest = 0.0
+        for p in mobile_dir.iterdir():
+            if p.is_file():
+                latest = max(latest, p.stat().st_mtime)
+        return str(int(latest))
 
     @app.get("/mobile", response_model=None)
-    def mobile_shell() -> FileResponse:
+    def mobile_shell() -> Response:
         if not mobile_index.is_file():
             raise HTTPException(status_code=404, detail="mobile UI not bundled")
-        return FileResponse(mobile_index, media_type="text/html")
+        version = _mobile_build_version()
+        html = mobile_index.read_text(encoding="utf-8")
+        # Append ?v=<build> to /static/mobile/*.jsx so every deploy invalidates
+        # the browser's cached Babel-compiled output.
+        html = re.sub(
+            r'(src="/static/mobile/[^"?]+\.jsx)"',
+            rf'\1?v={version}"',
+            html,
+        )
+        return Response(content=html, media_type="text/html; charset=utf-8",
+                        headers={"Cache-Control": "no-cache"})
+
 
     @app.get("/api/today")
     def api_today() -> JSONResponse:
