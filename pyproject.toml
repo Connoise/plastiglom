@@ -43,6 +43,7 @@ plastiglom-scheduler = "plastiglom.apps.scheduler.__main__:main"
 plastiglom-archiver = "plastiglom.apps.archiver.__main__:main"
 plastiglom-tagger = "plastiglom.apps.tagger.__main__:main"
 plastiglom-analyzer = "plastiglom.apps.analyzer.__main__:main"
+plastiglom-meta = "plastiglom.apps.meta_engine.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/plastiglom"]

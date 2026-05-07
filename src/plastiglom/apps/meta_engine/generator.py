@@ -54,8 +54,18 @@ class Generator:
     vault_path: Path
     proposed_by: str = "opus-4-7"
 
-    def generate(self, payload: GeneratorInput) -> list[ProposalRecord]:
-        """Run a single Opus pass; persist any pending proposals."""
+    def generate(
+        self,
+        payload: GeneratorInput,
+        *,
+        dry_run: bool = False,
+    ) -> list[ProposalRecord]:
+        """Run a single Opus pass; persist any pending proposals.
+
+        With `dry_run=True`, records are constructed and returned but not
+        written to disk — useful for the CLI's preview path so callers can
+        see what would be proposed without polluting the queue.
+        """
         call = LLMCall(
             system=_SYSTEM,
             user=_render_user(payload),
@@ -69,7 +79,8 @@ class Generator:
         records: list[ProposalRecord] = []
         for proposal in proposals:
             record = make_record(proposal, proposed_by=self.proposed_by, when=when)
-            save_proposal(self.vault_path, record)
+            if not dry_run:
+                save_proposal(self.vault_path, record)
             records.append(record)
         return records
 

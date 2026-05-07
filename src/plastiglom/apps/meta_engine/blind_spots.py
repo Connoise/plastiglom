@@ -32,6 +32,7 @@ def detect_blind_spots(
     pool: list[Exercise],
     window_start: datetime,
     window_end: datetime,
+    dry_run: bool = False,
 ) -> list[ProposalRecord]:
     """Run a blind-spot pass over the given window. Returns persisted records."""
     entries = _collect_window(vault_path, window_start, window_end)
@@ -41,7 +42,7 @@ def detect_blind_spots(
         analysis_excerpt=excerpt,
         memory_excerpt=_render_memory_subjects(vault_path),
     )
-    return generator.generate(payload)
+    return generator.generate(payload, dry_run=dry_run)
 
 
 def _collect_window(vault: Path, start: datetime, end: datetime) -> list[Entry]:
