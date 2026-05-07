@@ -20,9 +20,14 @@ from plastiglom.apps.scheduler.scheduler import FiringClock, Scheduler, compute_
 from plastiglom.packages.config import load_settings
 from plastiglom.packages.core.exercise import ExerciseCategory, ExerciseStatus
 from plastiglom.packages.vault.markdown import read_markdown_file
-from plastiglom.packages.vault.serializers import exercise_from_document
+from plastiglom.packages.vault.serializers import exercise_from_document, parse_entry
 
 logger = logging.getLogger(__name__)
+
+# Span of recent firings used to suppress unintentional repeats. With the pool
+# sized to fill a week of 2x-daily firings (§7.7), 7 covers the most recent
+# ~3-4 days and still leaves ample candidates for the weighted draw.
+RECENT_FIRINGS_LOOKBACK = 7
 
 
 def _load_active_main(exercises_dir: Path) -> list:
@@ -39,6 +44,27 @@ def _load_active_main(exercises_dir: Path) -> list:
         if exercise.status is ExerciseStatus.ACTIVE and exercise.category is ExerciseCategory.MAIN:
             pool.append(exercise)
     return pool
+
+
+def _recent_main_exercise_ids(entries_root: Path, *, limit: int) -> set[str]:
+    """Return main exercise IDs from the most recent `limit` firings.
+
+    Used to forbid reuse so morning/evening windows don't repeat the same
+    exercise back-to-back. Secondaries (id prefix `secondary-`) are ignored —
+    the secondary picker enforces its own per-day uniqueness.
+    """
+    if limit <= 0 or not entries_root.exists():
+        return set()
+    fired: list[tuple[datetime, str]] = []
+    for md_path in entries_root.rglob("*.md"):
+        try:
+            entry = parse_entry(read_markdown_file(md_path))
+        except Exception:
+            continue
+        if entry.exercise_id.startswith("main-"):
+            fired.append((entry.timestamp_fired, entry.exercise_id))
+    fired.sort(key=lambda r: r[0], reverse=True)
+    return {ex_id for _, ex_id in fired[:limit]}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -59,7 +85,10 @@ def main(argv: list[str] | None = None) -> int:
         rng=random.Random(),
     )
     now = datetime.now(tz=settings.timezone)
-    exercise = scheduler.select_next_main(pool, when=now)
+    recent_ids = _recent_main_exercise_ids(
+        settings.entries_dir, limit=RECENT_FIRINGS_LOOKBACK
+    )
+    exercise = scheduler.select_next_main(pool, when=now, recent_ids=recent_ids)
     lock_at = compute_lock_at(now, scheduler.clock, scheduler.tz)
 
     logger.info("selected exercise=%s lock_at=%s", exercise.id, lock_at.isoformat())
