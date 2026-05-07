@@ -14,6 +14,7 @@ from plastiglom.apps.analyzer.analyzer import (
 )
 from plastiglom.apps.analyzer.digest import WeeklyDigest
 from plastiglom.apps.analyzer.digest import week_bounds as digest_week_bounds
+from plastiglom.apps.meta_engine.generator import Generator
 from plastiglom.packages.config import load_settings
 from plastiglom.packages.llm.router import LLMRouter
 
@@ -49,9 +50,20 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_opus(args: argparse.Namespace, settings, router: LLMRouter) -> int:
-    analyzer = Analyzer(vault_path=settings.vault_path, router=router)
     today = date.today()
     cadence = Cadence(args.cadence)
+    # Per §9 Phase 4: monthly analysis triggers a blind-spot pass that
+    # files exercise proposals. Other cadences run plain.
+    meta_generator = (
+        Generator(router=router, vault_path=settings.vault_path)
+        if cadence is Cadence.MONTHLY
+        else None
+    )
+    analyzer = Analyzer(
+        vault_path=settings.vault_path,
+        router=router,
+        meta_generator=meta_generator,
+    )
     if cadence is Cadence.WEEKLY:
         start, end = week_bounds(today - timedelta(days=1))
     elif cadence is Cadence.MONTHLY:
