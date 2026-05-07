@@ -143,6 +143,137 @@ def test_reject_records_note_and_does_not_apply(vault):
     assert on_disk.version == 1
 
 
+def _refine_yaml(
+    *,
+    exercise_id: str = "main-edit-target",
+    version: int = 2,
+    prompts=("user-refined?",),
+    status: str = "active",
+) -> str:
+    from datetime import UTC, datetime
+
+    import yaml
+
+    when = datetime(2026, 5, 14, tzinfo=UTC).isoformat()
+    return yaml.safe_dump(
+        {
+            "id": exercise_id,
+            "title": "Edit target",
+            "category": "main",
+            "parent_id": None,
+            "version": version,
+            "status": status,
+            "schedule": {
+                "window": "evening",
+                "weight_factors": {
+                    "recent_relevance": 0.5,
+                    "depth_potential": 0.5,
+                    "weekday_weight": 0.5,
+                    "weekend_weight": 0.5,
+                    "novelty_value": 0.5,
+                },
+            },
+            "prompts": list(prompts),
+            "tags": ["values"],
+            "created_at": when,
+            "created_by": "seed",
+            "updated_at": when,
+            "updated_by": "user",
+        },
+        sort_keys=False,
+    )
+
+
+def test_refine_persists_user_yaml_and_recomputes_diff(vault):
+    pid = _seed_pending(vault)
+    client = _client(vault)
+    refined_yaml = _refine_yaml(prompts=["user-refined?"])
+    r = client.post(
+        f"/proposals/{pid}/refine",
+        data={"exercise_yaml": refined_yaml, "rationale_addendum": "tightened wording"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    record = load_proposal(vault, pid)
+    assert record.status is ProposalStatus.PENDING
+    assert record.proposal.exercise.prompts == ["user-refined?"]
+    assert "user-refined?" in record.proposal.diff
+    assert "[refined by user]: tightened wording" in record.proposal.rationale
+
+
+def test_refine_rejects_id_change(vault):
+    pid = _seed_pending(vault)
+    client = _client(vault)
+    bad_yaml = _refine_yaml(exercise_id="main-different-target")
+    r = client.post(
+        f"/proposals/{pid}/refine",
+        data={"exercise_yaml": bad_yaml},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+    assert "id is fixed" in r.json()["detail"]
+
+
+def test_refine_rejects_invalid_yaml(vault):
+    pid = _seed_pending(vault)
+    client = _client(vault)
+    r = client.post(
+        f"/proposals/{pid}/refine",
+        data={"exercise_yaml": "this: is: not: valid: yaml: ["},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+
+
+def test_refine_rejects_edit_without_version_bump(vault):
+    pid = _seed_pending(vault)
+    client = _client(vault)
+    # Pool has v1 on disk; sending v1 violates the edit invariant.
+    bad = _refine_yaml(version=1)
+    r = client.post(
+        f"/proposals/{pid}/refine",
+        data={"exercise_yaml": bad},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+    assert "must bump" in r.json()["detail"]
+
+
+def test_refine_rejects_when_proposal_already_decided(vault):
+    pid = _seed_pending(vault)
+    client = _client(vault)
+    client.post(f"/proposals/{pid}/reject", data={"note": ""}, follow_redirects=False)
+    r = client.post(
+        f"/proposals/{pid}/refine",
+        data={"exercise_yaml": _refine_yaml()},
+        follow_redirects=False,
+    )
+    assert r.status_code == 409
+
+
+def test_approve_uses_refined_exercise(vault):
+    """Refinement -> approval applies the user's edited version, not Opus's."""
+    pid = _seed_pending(vault)
+    client = _client(vault)
+    refined_yaml = _refine_yaml(prompts=["user-final?"], version=3)
+    client.post(
+        f"/proposals/{pid}/refine",
+        data={"exercise_yaml": refined_yaml},
+        follow_redirects=False,
+    )
+    r = client.post(f"/proposals/{pid}/approve", follow_redirects=False)
+    assert r.status_code == 303
+
+    from plastiglom.packages.vault.markdown import read_markdown_file
+    from plastiglom.packages.vault.serializers import exercise_from_document
+
+    on_disk = exercise_from_document(
+        read_markdown_file(vault / "exercises" / "main" / "main-edit-target.md")
+    )
+    assert on_disk.version == 3
+    assert on_disk.prompts == ["user-final?"]
+
+
 def test_index_separates_pending_and_decided(vault):
     pid = _seed_pending(vault)
     client = _client(vault)

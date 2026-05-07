@@ -15,11 +15,9 @@ from unittest.mock import patch
 import pytest
 
 from plastiglom.apps.meta_engine.__main__ import (
-    _load_active_pool,
-)
-from plastiglom.apps.meta_engine.__main__ import (
     main as meta_main,
 )
+from plastiglom.apps.meta_engine.proposals import load_active_pool
 from plastiglom.apps.meta_engine.queue import list_proposals
 from plastiglom.packages.config import Settings
 from plastiglom.packages.core.exercise import (
@@ -156,7 +154,7 @@ def test_load_active_pool_includes_main_and_secondary_skips_retired(tmp_path: Pa
         parent_id="main-a",
     )
     _seed_exercise_files(tmp_path / "exercises", [main_active, main_retired, secondary])
-    pool = _load_active_pool(tmp_path / "exercises")
+    pool = load_active_pool(tmp_path / "exercises")
     assert {ex.id for ex in pool} == {"main-a", "secondary-a"}
 
 

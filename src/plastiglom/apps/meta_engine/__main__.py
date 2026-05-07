@@ -23,16 +23,10 @@ from pathlib import Path
 
 from plastiglom.apps.meta_engine.blind_spots import detect_blind_spots
 from plastiglom.apps.meta_engine.generator import Generator, GeneratorInput
+from plastiglom.apps.meta_engine.proposals import load_active_pool
 from plastiglom.apps.meta_engine.queue import ProposalRecord
 from plastiglom.packages.config import Settings, load_settings
-from plastiglom.packages.core.exercise import (
-    Exercise,
-    ExerciseCategory,
-    ExerciseStatus,
-)
 from plastiglom.packages.llm.router import LLMRouter
-from plastiglom.packages.vault.markdown import read_markdown_file
-from plastiglom.packages.vault.serializers import exercise_from_document
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +101,7 @@ def _build_router(settings: Settings) -> LLMRouter:
 def _run_blind_spots(
     args: argparse.Namespace, settings: Settings, generator: Generator
 ) -> int:
-    pool = _load_active_pool(settings.exercises_dir)
+    pool = load_active_pool(settings.exercises_dir)
     if not pool:
         logger.error("no active exercises in %s", settings.exercises_dir)
         return 2
@@ -135,7 +129,7 @@ def _run_blind_spots(
 def _run_generate(
     args: argparse.Namespace, settings: Settings, generator: Generator
 ) -> int:
-    pool = _load_active_pool(settings.exercises_dir)
+    pool = load_active_pool(settings.exercises_dir)
     if not pool:
         logger.error("no active exercises in %s", settings.exercises_dir)
         return 2
@@ -155,30 +149,6 @@ def _run_generate(
     records = generator.generate(payload, dry_run=args.dry_run)
     _report(records, dry_run=args.dry_run)
     return 0
-
-
-def _load_active_pool(exercises_dir: Path) -> list[Exercise]:
-    """Load every active exercise (main + secondary) for generator validation."""
-    pool: list[Exercise] = []
-    for sub in ("main", "secondary"):
-        directory = exercises_dir / sub
-        if not directory.exists():
-            continue
-        for path in sorted(directory.glob("*.md")):
-            try:
-                exercise = exercise_from_document(read_markdown_file(path))
-            except Exception as exc:  # pragma: no cover
-                logger.warning("skipping exercise %s: %s", path, exc)
-                continue
-            if exercise.status is not ExerciseStatus.ACTIVE:
-                continue
-            expected = (
-                ExerciseCategory.MAIN if sub == "main" else ExerciseCategory.SECONDARY
-            )
-            if exercise.category is not expected:
-                continue
-            pool.append(exercise)
-    return pool
 
 
 def _report(records: list[ProposalRecord], *, dry_run: bool) -> None:
