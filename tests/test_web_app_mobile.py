@@ -44,6 +44,22 @@ def test_static_jsx_served(vault):
     assert "ReactDOM.createRoot" in r.text
 
 
+def test_mobile_shell_injects_cache_bust(vault):
+    """The /mobile shell must rewrite JSX <script src> to include ?v=<build>
+    so browsers cannot serve a stale Babel-compiled cache after a deploy."""
+    client = _client(vault, datetime(2026, 5, 14, 21, 5, tzinfo=UTC))
+    r = client.get("/mobile")
+    assert r.status_code == 200
+    assert r.headers.get("cache-control") == "no-cache"
+    text = r.text
+    # Every JSX include must carry a versioned query string.
+    import re as _re
+    jsx_includes = _re.findall(r'src="(/static/mobile/[^"]+\.jsx[^"]*)"', text)
+    assert jsx_includes, "no JSX includes found in mobile shell"
+    for src in jsx_includes:
+        assert "?v=" in src, f"missing cache-bust on {src}"
+
+
 def test_api_today_returns_open_entry(vault, fired_fixture):
     fired, _ = fired_fixture
     client = _client(vault, fired + timedelta(minutes=5))
