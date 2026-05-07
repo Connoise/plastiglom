@@ -14,11 +14,15 @@ Memory updates are a separate pass (see `memory.py` when implemented).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 
+from plastiglom.apps.meta_engine.blind_spots import detect_blind_spots
+from plastiglom.apps.meta_engine.generator import Generator
+from plastiglom.apps.meta_engine.proposals import load_active_pool
+from plastiglom.apps.meta_engine.queue import ProposalRecord
 from plastiglom.packages.core.entry import Entry
 from plastiglom.packages.llm.router import LLMCall, LLMRouter, Task
 from plastiglom.packages.vault.markdown import (
@@ -58,6 +62,10 @@ class AnalysisRequest:
 class Analyzer:
     vault_path: Path
     router: LLMRouter
+    meta_generator: Generator | None = field(default=None)
+    """Optional meta-engine generator. When present, monthly analysis runs
+    a blind-spot pass after the report and lists any produced proposals
+    inline. Per §11 the proposals are always pending and never auto-applied."""
 
     def run(self, request: AnalysisRequest) -> Path:
         entries = _collect_window(self.vault_path, request.window_start, request.window_end)
@@ -79,21 +87,28 @@ class Analyzer:
             max_tokens=4096,
         )
         response = self.router.invoke(task, call)
+        body = response.text.rstrip()
+        proposal_ids: list[str] = []
+
+        if self._should_run_blind_spots(request):
+            records = self._run_blind_spots(request)
+            proposal_ids = [r.id for r in records]
+            body += "\n\n" + _render_proposal_footer(records)
 
         report_path = _report_path(self.vault_path, request)
+        metadata: dict[str, object | None] = {
+            "cadence": request.cadence.value,
+            "window_start": request.window_start,
+            "window_end": request.window_end,
+            "query": request.query,
+            "slug": request.slug,
+            "correction_of": str(request.correction_of) if request.correction_of else None,
+        }
+        if proposal_ids:
+            metadata["blind_spot_proposal_ids"] = proposal_ids
         write_markdown_file(
             report_path,
-            FrontmatterDocument(
-                metadata={
-                    "cadence": request.cadence.value,
-                    "window_start": request.window_start,
-                    "window_end": request.window_end,
-                    "query": request.query,
-                    "slug": request.slug,
-                    "correction_of": str(request.correction_of) if request.correction_of else None,
-                },
-                content=response.text.rstrip() + "\n",
-            ),
+            FrontmatterDocument(metadata=metadata, content=body + "\n"),
         )
         if request.correction_of:
             history_slug = request.slug or request.correction_of.stem
@@ -109,6 +124,38 @@ class Analyzer:
                 ),
             )
         return report_path
+
+
+    def _should_run_blind_spots(self, request: AnalysisRequest) -> bool:
+        """Blind-spot detection only fires on monthly first-runs.
+
+        Skips corrections (the prior report's proposals already exist) and
+        any cadence other than monthly per §9 Phase 4.
+        """
+        return (
+            self.meta_generator is not None
+            and request.cadence is Cadence.MONTHLY
+            and request.correction_of is None
+        )
+
+    def _run_blind_spots(self, request: AnalysisRequest) -> list[ProposalRecord]:
+        """Run a blind-spot pass scoped to the report's window.
+
+        Returns [] (without an Opus call) if no active exercises exist —
+        nothing to propose against.
+        """
+        pool = load_active_pool(self.vault_path / "exercises")
+        if not pool:
+            logger.info("blind-spots skipped: empty exercise pool")
+            return []
+        assert self.meta_generator is not None
+        return detect_blind_spots(
+            generator=self.meta_generator,
+            vault_path=self.vault_path,
+            pool=pool,
+            window_start=request.window_start,
+            window_end=request.window_end,
+        )
 
 
 def correction_request(prior_report_path: Path, correction_note: str) -> AnalysisRequest:
@@ -175,6 +222,36 @@ def _render_memory_snapshot(vault: Path) -> str:
     for path in sorted(memory_dir.glob("*.md")):
         pieces.append(f"\n### {path.stem}\n{path.read_text(encoding='utf-8')}")
     return "\n".join(pieces)
+
+
+def _render_proposal_footer(records: list[ProposalRecord]) -> str:
+    """Render a markdown section listing blind-spot proposals.
+
+    Always emitted when the blind-spot pass ran, even with zero results,
+    so the report makes the pass visible. Each line is short — the user
+    refines and approves at /proposals/<id> in the web app.
+    """
+    if not records:
+        return (
+            "## Proposed exercise changes\n\n"
+            "Blind-spot detection ran over this window and produced no proposals."
+        )
+    lines = [
+        "## Proposed exercise changes",
+        "",
+        f"Blind-spot detection ran over this window and produced {len(records)} "
+        f"proposal(s). Each is pending — review and refine before approving.",
+        "",
+    ]
+    for record in records:
+        rationale = record.proposal.rationale.strip().replace("\n", " ")
+        if len(rationale) > 160:
+            rationale = rationale[:157] + "..."
+        lines.append(
+            f"- `{record.id}` — {record.proposal.action.value} "
+            f"`{record.proposal.exercise.id}`: {rationale}"
+        )
+    return "\n".join(lines)
 
 
 def _render_user_ask(request: AnalysisRequest) -> str:
