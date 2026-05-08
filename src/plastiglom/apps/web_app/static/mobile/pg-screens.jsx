@@ -753,6 +753,7 @@ function ScreenArchive({ theme, t, entries, loading, onOpen, onTab }) {
         background: theme.dark ? 'rgba(20,25,32,0.6)' : 'rgba(255,254,250,0.85)',
         border: `0.5px solid ${theme.lineSoft}`,
         padding: '0 14px',
+        position: 'relative', zIndex: 1,
       }}>
         <IconSearch size={16} style={{ color: theme.textDim }} />
         <input
@@ -770,6 +771,7 @@ function ScreenArchive({ theme, t, entries, loading, onOpen, onTab }) {
         margin: '12px 18px 8px',
         display: 'flex', alignItems: 'center', gap: 6,
         overflowX: 'auto',
+        position: 'relative', zIndex: 1,
       }}>
         {filters.map((f) => {
           const on = f === active;
@@ -793,6 +795,7 @@ function ScreenArchive({ theme, t, entries, loading, onOpen, onTab }) {
       <div style={{
         padding: '4px 14px 130px',
         display: 'flex', flexDirection: 'column', gap: 10,
+        position: 'relative', zIndex: 1,
       }}>
         {loading && (
           <div style={{ color: theme.textDim, padding: '40px 0', textAlign: 'center',
@@ -898,7 +901,7 @@ function ScreenAnalysis({ theme, t, groups, loading, onTab }) {
       />
 
       {cadences.length > 0 && (
-        <div style={{ margin: '6px 18px 0' }}>
+        <div style={{ margin: '6px 18px 0', position: 'relative', zIndex: 1 }}>
           <div style={{
             display: 'flex', padding: 3, borderRadius: 12,
             background: theme.dark ? 'rgba(20,25,32,0.6)' : 'rgba(220,217,211,0.55)',
@@ -926,6 +929,7 @@ function ScreenAnalysis({ theme, t, groups, loading, onTab }) {
       <div style={{
         padding: '14px 18px 130px',
         display: 'flex', flexDirection: 'column', gap: 10,
+        position: 'relative', zIndex: 1,
       }}>
         {loading && (
           <div style={{ color: theme.textDim, padding: '40px 0', textAlign: 'center',
@@ -1031,7 +1035,8 @@ function ScreenSettings({ theme, t, themePref, onThemePref, info, infoLoading, o
         }
       />
 
-      <div style={{ padding: '8px 18px 130px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ padding: '8px 18px 130px', display: 'flex', flexDirection: 'column', gap: 18,
+                    position: 'relative', zIndex: 1 }}>
 
         <SettingsGroup theme={theme} label="Appearance">
           <SettingsRow theme={theme} label="Theme"
