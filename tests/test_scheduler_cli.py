@@ -65,6 +65,10 @@ class _StubSettings:
         self.vault_path = vault
         self.exercises_dir = vault / "exercises"
         self.entries_dir = vault / "entries"
+        # Telegram notification path is short-circuited when these are None.
+        self.telegram_bot_token = None
+        self.telegram_chat_id = None
+        self.web_base_url = "http://plastiglom.test"
 
 
 def test_load_active_secondary_filters_inactive(tmp_path: Path) -> None:

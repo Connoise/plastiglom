@@ -11,6 +11,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
@@ -105,6 +106,7 @@ class LLMRouter:
 
     def _log_usage(self, task: Task, resp: LLMResponse) -> None:
         record = {
+            "timestamp": datetime.now(tz=UTC).isoformat(),
             "task": task.value,
             "model": resp.model,
             "input_tokens": resp.input_tokens,

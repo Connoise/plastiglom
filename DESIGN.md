@@ -258,8 +258,12 @@ and user refinement), diff, and the version numbers before/after.
 ### 7.2 Telegram bot
 
 - On firing, sends a notification message: **exercise name + full prompt
-  text + deep link** to the Plastiglom web app.
+  text + deep link** to the Plastiglom web app. The scheduler invokes the
+  send after each main and secondary `on_fire`; both are best-effort and
+  archival never blocks on the API.
 - No response collection in Telegram. The chat stays a notification channel.
+- The LLM scheduler (§7.10) reuses the same `send_text` to announce
+  successful and failed scheduled jobs.
 - Optional reminder pings at configured intervals if not yet submitted.
 
 ### 7.3 Web app (Tailscale PWA)
@@ -357,7 +361,31 @@ Default stance: **never auto-apply** changes to exercises. Always propose.
   Opus on every analysis. Opus receives a curated, ranked retrieval plus
   the target-window entries verbatim.
 
-### 7.9 LLM scheduler
+### 7.9 Operational dashboards
+
+Three read-only reports complement the LLM apps. Each ships as a CLI and a
+web-app page; both share the same in-process aggregation modules.
+
+- **`apps/stats_report` (`/stats`)** — submission streaks and per-exercise
+  coverage. Submission days, longest run, current run anchored on the most
+  recent fire day, fired-vs-submitted ratios per exercise. Pure analysis
+  over `entries/`; no LLM.
+- **`apps/cost_report` (`/cost`)** — rolls up the JSONL `logs/llm_usage.jsonl`
+  the router appends to on every Anthropic call. Token totals, USD cost
+  (via a static `DEFAULT_PRICES` table with `PLASTIGLOM_LLM_PRICES_JSON`
+  override hook), cache-hit rate, per-task / per-model / per-day breakdowns.
+- **`apps/vault_check`** — read-only validator that lints `exercises/` and
+  `entries/` for the highest-likelihood silent-corruption sources: parse
+  failures, orphan entries, broken secondary `parent_id`, category /
+  directory mismatch, `lock_at <= timestamp_fired`, `submitted` entries
+  with empty responses, duplicate filenames, and recent prompt-snapshot
+  drift. Errors fail the CLI; warnings are surfaced but don't.
+
+The router was extended to write an ISO-8601 `timestamp` field on every
+usage record so the cost report can group by day. Older records without a
+timestamp still flow into the overall totals (`skipped_undated` counter).
+
+### 7.10 LLM scheduler
 
 `apps/llm_scheduler` is the cron-facing dispatcher for LLM-driven jobs that
 have a canonical cadence: the Phase 2 Sonnet digest, Opus weekly analysis,

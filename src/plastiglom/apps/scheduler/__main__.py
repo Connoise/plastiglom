@@ -17,6 +17,7 @@ from pathlib import Path
 from plastiglom.apps.archiver.archiver import Archiver, FireEvent
 from plastiglom.apps.memory_indexer import QMDCLIIndexer, StubIndexer
 from plastiglom.apps.scheduler.scheduler import FiringClock, Scheduler, compute_lock_at
+from plastiglom.apps.telegram_bot import format_notification, send_text
 from plastiglom.packages.config import load_settings
 from plastiglom.packages.core.exercise import ExerciseCategory, ExerciseStatus
 from plastiglom.packages.vault.markdown import read_markdown_file
@@ -165,6 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     archiver.finalize_prior(now)
     entry = archiver.on_fire(FireEvent(exercise=exercise, fired_at=now, lock_at=lock_at))
     logger.info("fired entry=%s", entry.id)
+    _notify_fire(entry, settings)
 
     if not args.no_secondaries:
         _fire_eligible_secondaries(
@@ -175,6 +177,23 @@ def main(argv: list[str] | None = None) -> int:
             lock_at=lock_at,
         )
     return 0
+
+
+def _notify_fire(entry, settings) -> None:
+    """Push a Telegram notification for a freshly fired entry.
+
+    No-op when Telegram is not configured. Send failures are swallowed by
+    `send_text`; we only log here so a bad chat-id can't break archival.
+    """
+    token = settings.telegram_bot_token
+    chat = settings.telegram_chat_id
+    if not token or not chat:
+        return
+    notif = format_notification(entry, settings.web_base_url)
+    text = f"{notif.title}\n\n{notif.body}"
+    ok = send_text(text, bot_token=token, chat_id=chat)
+    if not ok:
+        logger.warning("telegram notify failed for entry=%s", entry.id)
 
 
 def _fire_eligible_secondaries(
@@ -212,6 +231,7 @@ def _fire_eligible_secondaries(
             FireEvent(exercise=secondary, fired_at=now, lock_at=lock_at)
         )
         logger.info("fired secondary=%s entry=%s", secondary.id, sec_entry.id)
+        _notify_fire(sec_entry, settings)
 
 
 if __name__ == "__main__":
