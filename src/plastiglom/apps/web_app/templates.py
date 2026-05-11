@@ -36,6 +36,8 @@ _BASE = """\
 <a href="/day/{{ today.isoformat() }}">Index</a>
 <a href="/analysis">Analysis</a>
 <a href="/proposals">Proposals</a>
+<a href="/stats">Stats</a>
+<a href="/cost">Cost</a>
 <a href="/mobile">Mobile</a>
 </nav>
 <main>
@@ -237,6 +239,157 @@ _ANALYSIS_VIEW = """\
 """
 
 
+_STATS_VIEW = """\
+{% extends '_base.html' %}
+{% block content %}
+<h1>Streak &amp; coverage</h1>
+<p class="meta">window: {{ window_label }}</p>
+
+<h2>Summary</h2>
+<ul>
+  <li>entries: {{ report.entry_count }}</li>
+  <li>submitted: {{ report.submitted_count }} ({{ '%.1f' % (report.submission_rate * 100) }}%)</li>
+  <li>null: {{ report.null_count }}</li>
+  <li>opened (unresponded): {{ report.open_count }}</li>
+  <li>submitted words: {{ report.submitted_words }}</li>
+</ul>
+
+<h2>Streak</h2>
+<ul>
+  <li>current: {{ report.streak.current }} day(s)</li>
+  <li>longest: {{ report.streak.longest }} day(s)</li>
+  <li>submission days: {{ report.streak.submission_days }}</li>
+  <li>fire days: {{ report.streak.fire_days }}</li>
+  {% if report.streak.last_submission_day %}
+  <li>last submission: {{ report.streak.last_submission_day.isoformat() }}</li>
+  {% endif %}
+  {% if report.streak.last_fire_day %}
+  <li>last fire: {{ report.streak.last_fire_day.isoformat() }}</li>
+  {% endif %}
+</ul>
+
+<h2>Per-exercise coverage (sorted by skip rate)</h2>
+<table>
+<thead><tr>
+  <th align="left">exercise</th>
+  <th>fired</th><th>submitted</th><th>null</th><th>open</th>
+  <th>sub %</th><th>skip %</th>
+</tr></thead>
+<tbody>
+{% for cov in coverage_rows %}
+<tr>
+  <td><code>{{ cov.exercise_id }}</code></td>
+  <td align="center">{{ cov.fired }}</td>
+  <td align="center">{{ cov.submitted }}</td>
+  <td align="center">{{ cov.null }}</td>
+  <td align="center">{{ cov.opened_unresponded }}</td>
+  <td align="right">{{ '%.0f' % (cov.submission_rate * 100) }}%</td>
+  <td align="right">{{ '%.0f' % (cov.skip_rate * 100) }}%</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+{% if report.top_tags %}
+<h2>Top tags</h2>
+<ul>
+{% for tag, count in report.top_tags %}
+  <li><code>{{ tag }}</code> &mdash; {{ count }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+
+<h2>Window</h2>
+<form method="get" action="/stats">
+  <label>since days: <input type="number" name="since_days" min="1" value="{{ since_days or '' }}"></label>
+  <button type="submit">Apply</button>
+  <a href="/stats">All time</a>
+</form>
+{% endblock %}
+"""
+
+_COST_VIEW = """\
+{% extends '_base.html' %}
+{% block content %}
+<h1>LLM cost &amp; usage</h1>
+<p class="meta">window: {{ window_label }}</p>
+
+<h2>Overall</h2>
+<ul>
+  <li>calls: {{ report.overall.calls }}</li>
+  <li>cost: ${{ '%.4f' % report.overall.cost_usd }}</li>
+  <li>input tokens: {{ report.overall.input_tokens }}</li>
+  <li>output tokens: {{ report.overall.output_tokens }}</li>
+  <li>cache read: {{ report.overall.cache_read_tokens }}</li>
+  <li>cache creation: {{ report.overall.cache_creation_tokens }}</li>
+  <li>cache hit rate: {{ '%.1f' % (report.overall.cache_hit_rate * 100) }}%</li>
+  <li>avg latency: {{ '%.0f' % report.overall.avg_latency_ms }} ms</li>
+  <li>records: {{ report.record_count }} (skipped {{ report.skipped_undated }} undated)</li>
+</ul>
+
+{% if report.unknown_models %}
+<p class="locked">unknown-priced models (cost shown as $0):
+  {% for m in report.unknown_models %}<code>{{ m }}</code> {% endfor %}
+</p>
+{% endif %}
+
+<h2>By task</h2>
+<table>
+<thead><tr><th align="left">task</th><th>calls</th><th>cost</th><th>in</th><th>out</th><th>cache hit %</th></tr></thead>
+<tbody>
+{% for task, t in by_task %}
+<tr>
+  <td><code>{{ task }}</code></td>
+  <td align="center">{{ t.calls }}</td>
+  <td align="right">${{ '%.4f' % t.cost_usd }}</td>
+  <td align="right">{{ t.input_tokens }}</td>
+  <td align="right">{{ t.output_tokens }}</td>
+  <td align="right">{{ '%.1f' % (t.cache_hit_rate * 100) }}%</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<h2>By model</h2>
+<table>
+<thead><tr><th align="left">model</th><th>calls</th><th>cost</th><th>in</th><th>out</th></tr></thead>
+<tbody>
+{% for model, t in by_model %}
+<tr>
+  <td><code>{{ model }}</code></td>
+  <td align="center">{{ t.calls }}</td>
+  <td align="right">${{ '%.4f' % t.cost_usd }}</td>
+  <td align="right">{{ t.input_tokens }}</td>
+  <td align="right">{{ t.output_tokens }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<h2>By day (most recent first)</h2>
+<table>
+<thead><tr><th align="left">day</th><th>calls</th><th>cost</th></tr></thead>
+<tbody>
+{% for day, t in by_day %}
+<tr>
+  <td>{{ day.isoformat() }}</td>
+  <td align="center">{{ t.calls }}</td>
+  <td align="right">${{ '%.4f' % t.cost_usd }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<h2>Window</h2>
+<form method="get" action="/cost">
+  <label>since days: <input type="number" name="since_days" min="1" value="{{ since_days or '' }}"></label>
+  <button type="submit">Apply</button>
+  <a href="/cost">All time</a>
+</form>
+{% endblock %}
+"""
+
+
 def build_env() -> Environment:
     return Environment(
         loader=DictLoader(
@@ -249,6 +402,8 @@ def build_env() -> Environment:
                 "analysis_view.html": _ANALYSIS_VIEW,
                 "proposals_index.html": _PROPOSALS_INDEX,
                 "proposal_view.html": _PROPOSAL_VIEW,
+                "stats_view.html": _STATS_VIEW,
+                "cost_view.html": _COST_VIEW,
             }
         ),
         autoescape=select_autoescape(["html"]),

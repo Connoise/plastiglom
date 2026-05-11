@@ -45,6 +45,9 @@ plastiglom-tagger = "plastiglom.apps.tagger.__main__:main"
 plastiglom-analyzer = "plastiglom.apps.analyzer.__main__:main"
 plastiglom-meta = "plastiglom.apps.meta_engine.__main__:main"
 plastiglom-llm-scheduler = "plastiglom.apps.llm_scheduler.__main__:main"
+plastiglom-cost = "plastiglom.apps.cost_report.__main__:main"
+plastiglom-stats = "plastiglom.apps.stats_report.__main__:main"
+plastiglom-vault = "plastiglom.apps.vault_check.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/plastiglom"]

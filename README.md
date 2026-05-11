@@ -112,6 +112,42 @@ QMD reindexing fires automatically after every entry write or daily-index
 update once `PLASTIGLOM_QMD_BIN` resolves; failures are swallowed so a
 flaky indexer can't break archival.
 
+## Operational dashboards
+
+Three read-only reports are exposed both as CLIs and as web pages.
+Everything runs against the on-disk vault; no LLM calls.
+
+```bash
+# Streak + per-exercise coverage. /stats in the web app.
+plastiglom-stats summary
+plastiglom-stats summary --since-days 30
+plastiglom-stats summary --json
+
+# LLM cost / token usage / cache-hit rate. /cost in the web app.
+plastiglom-cost summary
+plastiglom-cost summary --since-days 7
+plastiglom-cost top --by task --limit 5
+# Override list prices for non-default models:
+PLASTIGLOM_LLM_PRICES_JSON=/path/to/prices.json plastiglom-cost summary
+
+# Vault integrity check (linter for the markdown vault). Exits non-zero
+# when an invariant is broken. Use --warnings-as-errors in CI.
+plastiglom-vault check
+plastiglom-vault check --json
+plastiglom-vault check --warnings-as-errors
+```
+
+The cost report reads `<vault>/logs/llm_usage.jsonl`, which the router
+appends to on every Anthropic call (timestamp, task, model, token counts,
+cache-hit, latency). Records without a timestamp are still rolled into the
+overall totals but excluded from the per-day breakdown.
+
+The vault validator covers: malformed frontmatter, orphan entries, broken
+secondary `parent_id` links, exercises sitting in the wrong category dir,
+`lock_at <= timestamp_fired`, `submitted` entries with empty responses,
+empty `prompt_snapshot`, duplicate filenames, and recent prompt-snapshot
+drift vs. the live exercise.
+
 ## LLM job scheduler
 
 The Sonnet digest, Opus weekly/monthly analyses, and the meta-engine

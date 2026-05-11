@@ -29,6 +29,9 @@ from fastapi.staticfiles import StaticFiles
 
 from plastiglom.apps.analyzer import AnalysisRequest, correction_request
 from plastiglom.apps.archiver.archiver import Archiver, SubmitRequest
+from plastiglom.apps.cost_report import build_report as build_cost_report
+from plastiglom.apps.cost_report import load_usage
+from plastiglom.apps.cost_report.report import parse_window as parse_cost_window
 from plastiglom.apps.meta_engine import (
     ProposalStatus,
     apply_proposal,
@@ -40,6 +43,9 @@ from plastiglom.apps.meta_engine import (
     save_proposal,
     validate_exercise_for_action,
 )
+from plastiglom.apps.stats_report import build_report as build_stats_report
+from plastiglom.apps.stats_report import collect_entries
+from plastiglom.apps.stats_report.stats import parse_window as parse_stats_window
 from plastiglom.apps.web_app.analysis_view import (
     list_analysis,
     resolve_analysis_path,
@@ -319,6 +325,52 @@ def create_app(
                 latest = max(latest, p.stat().st_mtime)
         return str(int(latest))
 
+    @app.get("/stats", response_class=HTMLResponse)
+    def stats_page(since_days: int | None = None) -> HTMLResponse:
+        entries = collect_entries(vault_path / "entries")
+        today = clock().date()
+        start, end = parse_stats_window(
+            since_days=since_days, since=None, until=None, today=today
+        )
+        report = build_stats_report(entries, tz=tz, window_start=start, window_end=end)
+        coverage_rows = sorted(
+            report.by_exercise.values(), key=lambda c: c.skip_rate, reverse=True
+        )
+        return render(
+            "stats_view.html",
+            title="Plastiglom — Stats",
+            report=report,
+            coverage_rows=coverage_rows,
+            since_days=since_days,
+            window_label=_window_label(start, end),
+        )
+
+    @app.get("/cost", response_class=HTMLResponse)
+    def cost_page(since_days: int | None = None) -> HTMLResponse:
+        log_path = vault_path / "logs" / "llm_usage.jsonl"
+        records = load_usage(log_path)
+        start, end = parse_cost_window(
+            since_days=since_days, since=None, until=None, now=clock()
+        )
+        report = build_cost_report(records, window_start=start, window_end=end)
+        by_task = sorted(
+            report.by_task.items(), key=lambda kv: kv[1].cost_usd, reverse=True
+        )
+        by_model = sorted(
+            report.by_model.items(), key=lambda kv: kv[1].cost_usd, reverse=True
+        )
+        by_day = sorted(report.by_day.items(), reverse=True)
+        return render(
+            "cost_view.html",
+            title="Plastiglom — Cost",
+            report=report,
+            by_task=by_task,
+            by_model=by_model,
+            by_day=by_day,
+            since_days=since_days,
+            window_label=_window_label(start, end),
+        )
+
     @app.get("/mobile", response_model=None)
     def mobile_shell() -> Response:
         if not mobile_index.is_file():
@@ -498,6 +550,15 @@ def _parse_exercise_yaml(text: str):
         return exercise_from_document(FrontmatterDocument(metadata=meta, content=""))
     except (KeyError, ValidationError, ValueError) as exc:
         raise ValueError(f"invalid exercise: {exc}") from exc
+
+
+def _window_label(start, end) -> str:
+    """Human-friendly label for a dashboard window. Accepts dates or datetimes."""
+    if start is None and end is None:
+        return "all time"
+    s = start.isoformat() if start else "-inf"
+    e = end.isoformat() if end else "+inf"
+    return f"{s} .. {e}"
 
 
 def _naive_markdown_to_html(text: str) -> str:
