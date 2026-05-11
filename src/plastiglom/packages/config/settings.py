@@ -33,6 +33,11 @@ class Settings:
     model_sonnet: str
     model_opus: str
     qmd_bin: str
+    # LLM scheduler clock-of-day overrides (local time, see apps/llm_scheduler).
+    digest_weekly_at: time
+    analyzer_weekly_at: time
+    analyzer_monthly_at: time
+    meta_blind_spots_at: time
 
     @property
     def entries_dir(self) -> Path:
@@ -86,4 +91,14 @@ def load_settings(dotenv_path: str | os.PathLike[str] | None = None) -> Settings
         model_sonnet=os.environ.get("PLASTIGLOM_MODEL_SONNET", "claude-sonnet-4-6"),
         model_opus=os.environ.get("PLASTIGLOM_MODEL_OPUS", "claude-opus-4-7"),
         qmd_bin=os.environ.get("PLASTIGLOM_QMD_BIN", "qmd"),
+        digest_weekly_at=_parse_hhmm(os.environ.get("PLASTIGLOM_DIGEST_WEEKLY_AT", "22:00")),
+        analyzer_weekly_at=_parse_hhmm(
+            os.environ.get("PLASTIGLOM_ANALYZER_WEEKLY_AT", "22:30")
+        ),
+        analyzer_monthly_at=_parse_hhmm(
+            os.environ.get("PLASTIGLOM_ANALYZER_MONTHLY_AT", "23:00")
+        ),
+        meta_blind_spots_at=_parse_hhmm(
+            os.environ.get("PLASTIGLOM_META_BLIND_SPOTS_AT", "04:00")
+        ),
     )

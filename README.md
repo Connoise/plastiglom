@@ -112,6 +112,50 @@ QMD reindexing fires automatically after every entry write or daily-index
 update once `PLASTIGLOM_QMD_BIN` resolves; failures are swallowed so a
 flaky indexer can't break archival.
 
+## LLM job scheduler
+
+The Sonnet digest, Opus weekly/monthly analyses, and the meta-engine
+proposal pass each have a canonical cadence (see DESIGN.md §7.6 / §7.7).
+`apps/llm_scheduler` turns those into cron-driven jobs while leaving every
+function runnable on demand through its existing CLI.
+
+Default cadences (local time, overridable via env):
+
+| Job                | Schedule                          | Env override                        |
+| ------------------ | --------------------------------- | ----------------------------------- |
+| `digest_weekly`    | Sunday 22:00                      | `PLASTIGLOM_DIGEST_WEEKLY_AT`       |
+| `analyzer_weekly`  | Sunday 22:30                      | `PLASTIGLOM_ANALYZER_WEEKLY_AT`     |
+| `analyzer_monthly` | Last day of month 23:00 (also fires blind-spot proposals) | `PLASTIGLOM_ANALYZER_MONTHLY_AT` |
+| `meta_blind_spots` | 15th of month 04:00 (independent proposal pass)            | `PLASTIGLOM_META_BLIND_SPOTS_AT` |
+
+Wire it into cron once — hourly is plenty, the runner gates each job to one
+fire per canonical tick via `<vault>/logs/llm_scheduler_state.json`:
+
+```cron
+0 * * * *  PLASTIGLOM_VAULT_PATH=/home/vaults/Plastiglom /path/to/scripts/llm_schedule.py
+```
+
+Off-schedule execution:
+
+```bash
+# Show the registry, last-run timestamps, and what's due:
+python -m plastiglom.apps.llm_scheduler status
+
+# Preview what the next cron tick would fire without executing:
+python -m plastiglom.apps.llm_scheduler run --dry-run
+
+# Run a single registered job right now (updates last_run_at):
+python -m plastiglom.apps.llm_scheduler force digest_weekly
+
+# Or invoke the underlying CLIs directly (does not touch scheduler state):
+python -m plastiglom.apps.analyzer digest
+python -m plastiglom.apps.analyzer opus weekly
+python -m plastiglom.apps.analyzer opus monthly
+python -m plastiglom.apps.meta_engine blind-spots
+```
+
+A failed job leaves `last_run_at` unchanged, so the next cron tick retries.
+
 ## Phase 4 (meta-engine)
 
 Opus proposes exercise changes — never auto-applied. Proposals land in

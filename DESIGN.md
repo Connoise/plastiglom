@@ -296,6 +296,11 @@ Cadence:
 - **Ad-hoc**: user-triggered from the web app, arbitrary date range and
   granularity.
 
+The weekly and monthly cadences are driven by `apps/llm_scheduler` (§7.9)
+which also wires the Phase 2 Sonnet digest and a standalone meta-engine
+proposal pass. Each job remains runnable on demand through its existing
+per-app CLI; the scheduler only adds an idempotent cron-facing wrapper.
+
 Flow:
 
 1. Pre-analysis retrieval via QMD (§7.8): given the target window and
@@ -351,6 +356,32 @@ Default stance: **never auto-apply** changes to exercises. Always propose.
 - Rationale: much cheaper than sending the entire vault as context to
   Opus on every analysis. Opus receives a curated, ranked retrieval plus
   the target-window entries verbatim.
+
+### 7.9 LLM scheduler
+
+`apps/llm_scheduler` is the cron-facing dispatcher for LLM-driven jobs that
+have a canonical cadence: the Phase 2 Sonnet digest, Opus weekly analysis,
+Opus monthly analysis (which also triggers the meta-engine), and a
+standalone meta-engine proposal pass. It is deliberately separate from the
+exercise scheduler in §7.1 — the user-facing firings are real-time events,
+whereas LLM jobs are batch and can tolerate hour-granularity ticks.
+
+Mechanism:
+
+- Each job declares a `Cadence` rule (weekly / monthly) interpreted in the
+  local timezone.
+- `last_run_at` per job is persisted to `<vault>/logs/llm_scheduler_state.json`.
+- A cron entrypoint (recommended hourly) invokes `python -m
+  plastiglom.apps.llm_scheduler run`; the runner fires a job iff its most
+  recent canonical tick is strictly after `last_run_at`.
+- A failed job leaves `last_run_at` unchanged so the next cron tick retries.
+
+On-demand execution remains available:
+
+- `python -m plastiglom.apps.llm_scheduler force <name>` runs a registered
+  job immediately and advances `last_run_at`.
+- The underlying per-app CLIs (`apps/analyzer`, `apps/meta_engine`) are
+  unchanged — they bypass the scheduler entirely and do not touch state.
 
 ## 8. LLM Routing
 
