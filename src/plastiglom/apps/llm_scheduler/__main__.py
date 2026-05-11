@@ -24,6 +24,7 @@ from plastiglom.apps.llm_scheduler.runner import (
     Job,
     SchedulerReport,
     build_default_jobs,
+    build_telegram_notifier,
     force_run,
     is_due,
     run_due,
@@ -125,6 +126,7 @@ def _cmd_run(
         router=router,
         now=now,
         only=set(only) if only else None,
+        notifier=build_telegram_notifier(settings),
     )
     _print_report(report)
     return 0 if not report.errors else 1
@@ -134,7 +136,14 @@ def _cmd_force(jobs: list[Job], settings: Settings, *, name: str) -> int:
     router = _build_router(settings)
     now = datetime.now(tz=settings.timezone)
     try:
-        result = force_run(jobs, name, settings=settings, router=router, now=now)
+        result = force_run(
+            jobs,
+            name,
+            settings=settings,
+            router=router,
+            now=now,
+            notifier=build_telegram_notifier(settings),
+        )
     except KeyError as exc:
         print(str(exc), file=sys.stderr)
         return 2

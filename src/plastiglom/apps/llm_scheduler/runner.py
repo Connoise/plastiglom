@@ -34,6 +34,7 @@ from plastiglom.apps.llm_scheduler.state import load_state, save_state
 from plastiglom.apps.meta_engine.blind_spots import detect_blind_spots
 from plastiglom.apps.meta_engine.generator import Generator
 from plastiglom.apps.meta_engine.proposals import load_active_pool
+from plastiglom.apps.telegram_bot import send_text
 from plastiglom.packages.config import Settings
 from plastiglom.packages.llm.router import LLMRouter
 
@@ -54,7 +55,10 @@ class Job:
     name: str
     description: str
     cadence: Cadence
-    run: Callable[[JobContext], None]
+    # A successful run may return a short summary string used in the
+    # post-fire Telegram notification (e.g. the artifact path). Returning
+    # `None` falls back to a generic "fired" message.
+    run: Callable[[JobContext], str | None]
 
 
 @dataclass
@@ -64,6 +68,14 @@ class JobResult:
     skipped_reason: str | None = None
     error: str | None = None
     ran_at: datetime | None = None
+    summary: str | None = None
+
+
+# A callable invoked by the runner after each fire to push a status line
+# somewhere out-of-band. Default wiring sends to Telegram; tests inject a
+# capturing stub. Notifier failures are absorbed by the implementation and
+# never affect the job's `fired` status.
+Notifier = Callable[[JobResult], None]
 
 
 @dataclass
@@ -85,7 +97,7 @@ class SchedulerReport:
 # ---------------------------------------------------------------------------
 
 
-def _run_weekly_digest(ctx: JobContext) -> None:
+def _run_weekly_digest(ctx: JobContext) -> str:
     """Sonnet weekly digest over the most recently completed ISO week."""
     today = ctx.now.astimezone(ctx.settings.timezone).date()
     # Anchor on yesterday so we always cover a fully elapsed week.
@@ -93,9 +105,10 @@ def _run_weekly_digest(ctx: JobContext) -> None:
     digest = WeeklyDigest(vault_path=ctx.settings.vault_path, router=ctx.router)
     path = digest.run(start, end)
     logger.info("weekly digest wrote %s", path)
+    return f"weekly digest written to {path}"
 
 
-def _run_analyzer_weekly(ctx: JobContext) -> None:
+def _run_analyzer_weekly(ctx: JobContext) -> str:
     """Opus weekly analysis over the most recently completed ISO week."""
     today = ctx.now.astimezone(ctx.settings.timezone).date()
     from plastiglom.apps.analyzer.analyzer import week_bounds
@@ -110,9 +123,10 @@ def _run_analyzer_weekly(ctx: JobContext) -> None:
         )
     )
     logger.info("weekly analysis wrote %s", report)
+    return f"weekly analysis written to {report}"
 
 
-def _run_analyzer_monthly(ctx: JobContext) -> None:
+def _run_analyzer_monthly(ctx: JobContext) -> str:
     """Opus monthly analysis — also drives proposal generation via meta_generator.
 
     Per §9 Phase 4 / analyzer.py:129, a monthly run automatically invokes the
@@ -142,6 +156,7 @@ def _run_analyzer_monthly(ctx: JobContext) -> None:
         )
     )
     logger.info("monthly analysis wrote %s", report)
+    return f"monthly analysis written to {report}"
 
 
 # How many days back the standalone blind-spots pass scans. Matches the
@@ -149,7 +164,7 @@ def _run_analyzer_monthly(ctx: JobContext) -> None:
 BLIND_SPOTS_WINDOW_DAYS = 30
 
 
-def _run_meta_blind_spots(ctx: JobContext) -> None:
+def _run_meta_blind_spots(ctx: JobContext) -> str:
     """Standalone proposal-generation pass.
 
     The monthly analyzer also triggers blind-spot detection automatically;
@@ -160,7 +175,7 @@ def _run_meta_blind_spots(ctx: JobContext) -> None:
     pool = load_active_pool(ctx.settings.exercises_dir)
     if not pool:
         logger.warning("blind-spots: no active exercises in %s", ctx.settings.exercises_dir)
-        return
+        return "blind-spots: no active exercises, skipped"
     end = ctx.now.astimezone(UTC)
     start = end - timedelta(days=BLIND_SPOTS_WINDOW_DAYS)
     generator = Generator(router=ctx.router, vault_path=ctx.settings.vault_path)
@@ -173,6 +188,7 @@ def _run_meta_blind_spots(ctx: JobContext) -> None:
         dry_run=False,
     )
     logger.info("blind-spots filed %d proposal(s)", len(records))
+    return f"blind-spots filed {len(records)} proposal(s)"
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +247,37 @@ def _t(value: object) -> datetime.time:
 
 
 # ---------------------------------------------------------------------------
+# Telegram notifier
+# ---------------------------------------------------------------------------
+
+
+def format_job_message(result: JobResult) -> str:
+    """One-line status message used as the Telegram body for `result`."""
+    if result.error:
+        return f"Plastiglom: {result.name} failed — {result.error}"
+    body = result.summary or f"{result.name} completed"
+    return f"Plastiglom: {body}"
+
+
+def build_telegram_notifier(settings: Settings) -> Notifier | None:
+    """Return a notifier that pushes job status to Telegram.
+
+    Returns `None` when no Telegram credentials are configured, so callers
+    can simply pass the result through to `run_due` / `force_run` without
+    branching. Send errors are absorbed inside `send_text`.
+    """
+    token = settings.telegram_bot_token
+    chat = settings.telegram_chat_id
+    if not token or not chat:
+        return None
+
+    def _notify(result: JobResult) -> None:
+        send_text(format_job_message(result), bot_token=token, chat_id=chat)
+
+    return _notify
+
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
@@ -252,12 +299,15 @@ def run_due(
     state: dict[str, datetime] | None = None,
     only: set[str] | None = None,
     state_dir: Path | None = None,
+    notifier: Notifier | None = None,
 ) -> SchedulerReport:
     """Fire every job whose cadence has ticked since its last run.
 
     If `state` is omitted it is loaded (and re-saved) from `state_dir`
     (defaults to the settings' logs dir). Pass `only` to restrict the pass
-    to a subset of job names — useful for tests and for `--only`.
+    to a subset of job names — useful for tests and for `--only`. The
+    optional `notifier` is invoked once per executed job (success or
+    failure); skipped jobs are not announced.
     """
     target_dir = state_dir or settings.logs_dir
     own_state = state is None
@@ -277,6 +327,7 @@ def run_due(
         report.results.append(result)
         if result.fired:
             state[job.name] = now
+        _safe_notify(notifier, result)
 
     if own_state:
         save_state(target_dir, state)
@@ -291,6 +342,7 @@ def force_run(
     router: LLMRouter,
     now: datetime,
     state_dir: Path | None = None,
+    notifier: Notifier | None = None,
 ) -> JobResult:
     """Run a single named job immediately and update its last_run_at."""
     job = next((j for j in jobs if j.name == name), None)
@@ -302,6 +354,7 @@ def force_run(
     if result.fired:
         state[job.name] = now
         save_state(target_dir, state)
+    _safe_notify(notifier, result)
     return result
 
 
@@ -311,8 +364,18 @@ def _execute(
     ctx = JobContext(settings=settings, router=router, now=now)
     logger.info("firing job %s", job.name)
     try:
-        job.run(ctx)
+        summary = job.run(ctx)
     except Exception as exc:  # surfaced; state is left untouched so we retry
         logger.exception("job %s failed", job.name)
         return JobResult(name=job.name, fired=False, error=str(exc), ran_at=now)
-    return JobResult(name=job.name, fired=True, ran_at=now)
+    return JobResult(name=job.name, fired=True, ran_at=now, summary=summary)
+
+
+def _safe_notify(notifier: Notifier | None, result: JobResult) -> None:
+    """Run the notifier and swallow any exception so a bad notify can't kill the run."""
+    if notifier is None:
+        return
+    try:
+        notifier(result)
+    except Exception:
+        logger.exception("notifier raised for %s; ignoring", result.name)

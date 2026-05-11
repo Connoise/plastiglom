@@ -383,6 +383,12 @@ On-demand execution remains available:
 - The underlying per-app CLIs (`apps/analyzer`, `apps/meta_engine`) are
   unchanged — they bypass the scheduler entirely and do not touch state.
 
+Notifications: when `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` are set, the
+runner pushes a one-line status to the same Telegram channel that delivers
+exercise prompts (§7.2). Both successes (with a short artifact summary)
+and failures (with the exception string) are announced; skipped not-due
+jobs are not. Notifier errors are swallowed so they cannot poison a fire.
+
 ## 8. LLM Routing
 
 | Task                                         | Model            | Runs          |

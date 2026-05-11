@@ -156,6 +156,12 @@ python -m plastiglom.apps.meta_engine blind-spots
 
 A failed job leaves `last_run_at` unchanged, so the next cron tick retries.
 
+When `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are configured, every fire
+(success or failure, scheduled or `force`-d) sends a one-line status to the
+bot chat — e.g. `Plastiglom: weekly digest written to /vault/analysis/weekly/2026-W19-digest.md`
+or `Plastiglom: digest_weekly failed — api 429`. Notifier errors are
+absorbed so a flaky Telegram can't poison the job.
+
 ## Phase 4 (meta-engine)
 
 Opus proposes exercise changes — never auto-applied. Proposals land in
