@@ -88,17 +88,24 @@ class Scheduler:
         """
         recent = recent_ids or set()
         window = _window_for(when, self.clock)
-        candidates = [
+
+        def _window_match(ex: Exercise) -> bool:
+            return ex.schedule.window is ScheduleWindow.CONTEXTUAL or ex.schedule.window is window
+
+        active_in_window = [
             ex
             for ex in pool
             if ex.status is ExerciseStatus.ACTIVE
             and ex.category is ExerciseCategory.MAIN
-            and ex.id not in recent
-            and (ex.schedule.window is ScheduleWindow.CONTEXTUAL or ex.schedule.window is window)
+            and _window_match(ex)
         ]
+        candidates = [ex for ex in active_in_window if ex.id not in recent]
         if not candidates:
-            # Fall back to all active main exercises if filters eliminated everything.
-            candidates = [
+            # Recent-firings filter exhausted the window — relax it but keep
+            # the window match so morning exercises don't surface in the
+            # evening (and vice-versa). Only collapse the window filter when
+            # there are literally no active mains for this window.
+            candidates = active_in_window or [
                 ex
                 for ex in pool
                 if ex.status is ExerciseStatus.ACTIVE and ex.category is ExerciseCategory.MAIN

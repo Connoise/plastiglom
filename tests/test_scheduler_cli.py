@@ -130,6 +130,89 @@ def test_recent_main_excludes_secondary_entries(tmp_path: Path, main_exercise: E
     assert recent == {"main-evening-review"}
 
 
+def test_recent_main_window_scoped_ignores_other_window(tmp_path: Path) -> None:
+    """Morning lookup must not be polluted by evening firings (the bug fixed here)."""
+    archiver = Archiver(tmp_path)
+    lock = datetime(2026, 5, 20, 7, 30, tzinfo=UTC)
+    morning_ex = _make_exercise(
+        id_="main-morning-intentions",
+        category=ExerciseCategory.MAIN,
+        window=ScheduleWindow.MORNING,
+    )
+    evening_ex = _make_exercise(
+        id_="main-evening-review",
+        category=ExerciseCategory.MAIN,
+        window=ScheduleWindow.EVENING,
+    )
+    # One morning firing on May 14, three evening firings since.
+    archiver.on_fire(
+        FireEvent(exercise=morning_ex, fired_at=datetime(2026, 5, 14, 7, 30, tzinfo=UTC), lock_at=lock)
+    )
+    for day in (15, 16, 17):
+        archiver.on_fire(
+            FireEvent(exercise=evening_ex, fired_at=datetime(2026, 5, day, 21, 0, tzinfo=UTC), lock_at=lock)
+        )
+
+    clock = FiringClock(morning=time(7, 30), evening=time(21, 0))
+
+    morning_recent = _recent_main_exercise_ids(
+        tmp_path / "entries", limit=6, window=ScheduleWindow.MORNING, clock=clock
+    )
+    evening_recent = _recent_main_exercise_ids(
+        tmp_path / "entries", limit=6, window=ScheduleWindow.EVENING, clock=clock
+    )
+    assert morning_recent == {"main-morning-intentions"}
+    assert evening_recent == {"main-evening-review"}
+
+
+def test_recent_main_validates_window_and_clock_together(tmp_path: Path) -> None:
+    """Passing one of (window, clock) without the other is a programmer error."""
+    import pytest
+
+    (tmp_path / "entries").mkdir()
+    with pytest.raises(ValueError):
+        _recent_main_exercise_ids(
+            tmp_path / "entries", limit=5, window=ScheduleWindow.MORNING, clock=None
+        )
+
+
+def test_morning_pool_rotates_fully_before_repeating(tmp_path: Path) -> None:
+    """The whole morning pool must fire before any morning exercise repeats."""
+    from plastiglom.apps.scheduler.__main__ import _window_pool_size
+
+    clock = FiringClock(morning=time(7, 30), evening=time(21, 0))
+    scheduler = Scheduler(clock=clock, tz=UTC, rng=random.Random(0))
+    archiver = Archiver(tmp_path)
+
+    morning_pool = [
+        _make_exercise(
+            id_=f"main-morning-{i}",
+            category=ExerciseCategory.MAIN,
+            window=ScheduleWindow.MORNING,
+        )
+        for i in range(5)
+    ]
+    pool = list(morning_pool)
+    pool_size = _window_pool_size(pool, ScheduleWindow.MORNING)
+    lookback = pool_size - 1
+
+    selections: list[str] = []
+    for day in range(1, pool_size + 1):
+        when = datetime(2026, 5, day, 7, 30, tzinfo=UTC)
+        recent_ids = _recent_main_exercise_ids(
+            tmp_path / "entries",
+            limit=lookback,
+            window=ScheduleWindow.MORNING,
+            clock=clock,
+        )
+        picked = scheduler.select_next_main(pool, when=when, recent_ids=recent_ids)
+        selections.append(picked.id)
+        archiver.on_fire(FireEvent(exercise=picked, fired_at=when, lock_at=when + timedelta(hours=13, minutes=30)))
+
+    # Every morning exercise fires exactly once over a full rotation.
+    assert sorted(selections) == sorted(ex.id for ex in morning_pool)
+
+
 def test_fire_eligible_secondaries_skips_when_no_parent_today(
     tmp_path: Path, main_exercise: Exercise
 ) -> None:
