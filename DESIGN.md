@@ -188,6 +188,7 @@ title: "2026-05-14 - Values drift check"
 timestamp_fired: 2026-05-14T21:00:00-07:00
 timestamp_submitted: 2026-05-14T21:47:03-07:00
 timestamp_last_edited: 2026-05-14T22:10:11-07:00
+reminder_sent_at: null               # set once a follow-up reminder is sent
 lock_at: 2026-05-15T07:30:00-07:00   # editable until next main fires
 status: submitted                     # submitted | null | opened_unresponded
 tags: [values, identity, uncertainty]
@@ -261,10 +262,21 @@ and user refinement), diff, and the version numbers before/after.
   text + deep link** to the Plastiglom web app. The scheduler invokes the
   send after each main and secondary `on_fire`; both are best-effort and
   archival never blocks on the API.
+- When the fired main has a **connected secondary** (an active secondary
+  whose `parent_id` points at it) that may run later the same day, the
+  notification adds a one-line mention that a follow-up is coming. The same
+  note surfaces on the web/mobile prompt screen.
 - No response collection in Telegram. The chat stays a notification channel.
 - The LLM scheduler (§7.10) reuses the same `send_text` to announce
   successful and failed scheduled jobs.
-- Optional reminder pings at configured intervals if not yet submitted.
+- **Follow-up reminder.** A separate heartbeat (`scheduler --remind`, run
+  on a frequent cron tick) sends one additional ping for any entry still
+  unanswered when its `lock_at` (the next main firing) is within the
+  reminder window — default one hour, set by
+  `PLASTIGLOM_REMINDER_WINDOW_MINUTES`. The reminder carries the exercise
+  title plus a slice of the prompt (not just the title). It fires at most
+  once per entry, tracked by `reminder_sent_at` on the entry; a send failure
+  leaves the stamp unset so the next tick retries.
 
 ### 7.3 Web app (Tailscale PWA)
 
@@ -335,6 +347,18 @@ Responsible for the evolving exercise pool:
 - Creates **secondary exercises** as sub-tasks of parent mains, used to
   probe within-day or post-reflection changes.
 - Actively targets **blind spots** in collected data.
+
+Exercise character: prompts should **invite daily contemplation**, not run a
+routine check answerable in one or two sentences. The pool exists to produce
+the data of a changing life — a journal kept with active intention to surface
+long-term weaknesses, strengths, and personal insights. The meta-engine is
+instructed to pursue **breadth** across the whole of a life (highlights and
+how they felt in the moment versus in retrospect; the philosophy underneath
+goals, lifestyle, social conditions, emotions, health, legacy, and
+creativity; the health of specific relationships; current learning and
+interests; perceived failures, weak points, and their real explanations;
+and the alternate outcomes events could have taken) so analysis and
+generation do not pigeon-hole into a shrinking set of topics.
 
 User approval flow:
 

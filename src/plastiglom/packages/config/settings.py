@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import time
+from datetime import time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -26,6 +26,9 @@ class Settings:
     timezone: ZoneInfo
     morning_fire: time
     evening_fire: time
+    # How long before an entry's lock (the next main firing) a follow-up
+    # reminder may be sent if the entry is still unanswered.
+    reminder_window: timedelta
     telegram_bot_token: str | None
     telegram_chat_id: str | None
     web_base_url: str
@@ -84,6 +87,9 @@ def load_settings(dotenv_path: str | os.PathLike[str] | None = None) -> Settings
         timezone=ZoneInfo(os.environ.get("PLASTIGLOM_TIMEZONE", "UTC")),
         morning_fire=_parse_hhmm(os.environ.get("PLASTIGLOM_MORNING_FIRE", "07:30")),
         evening_fire=_parse_hhmm(os.environ.get("PLASTIGLOM_EVENING_FIRE", "21:00")),
+        reminder_window=timedelta(
+            minutes=int(os.environ.get("PLASTIGLOM_REMINDER_WINDOW_MINUTES", "60"))
+        ),
         telegram_bot_token=os.environ.get("TELEGRAM_BOT_TOKEN") or None,
         telegram_chat_id=os.environ.get("TELEGRAM_CHAT_ID") or None,
         web_base_url=os.environ.get("PLASTIGLOM_WEB_BASE_URL", "http://plastiglom.local"),

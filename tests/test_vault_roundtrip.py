@@ -62,3 +62,25 @@ def test_entry_serializer_roundtrip(vault):
     assert rehydrated.response.strip() == "Today, the silence after the call."
     assert rehydrated.prompt_snapshot == entry.prompt_snapshot
     assert rehydrated.status == EntryStatus.SUBMITTED
+
+
+def test_entry_roundtrips_reminder_sent_at(vault):
+    fired = datetime(2026, 5, 14, 7, 30, tzinfo=UTC)
+    reminded = datetime(2026, 5, 14, 20, 0, tzinfo=UTC)
+    entry = Entry(
+        id="2026-05-14-morning-intentions",
+        exercise_id="main-morning-intentions",
+        exercise_version=1,
+        title="2026-05-14 - Morning intentions",
+        timestamp_fired=fired,
+        reminder_sent_at=reminded,
+        lock_at=datetime(2026, 5, 14, 21, 0, tzinfo=UTC),
+        status=EntryStatus.OPENED_UNRESPONDED,
+        tags=[],
+        prompt_snapshot=["What's the single thing?"],
+        response="",
+    )
+    path = vault / "entries" / "2026" / "05" / "14-morning-intentions.md"
+    write_markdown_file(path, entry_to_document(entry))
+    rehydrated = parse_entry(read_markdown_file(path))
+    assert rehydrated.reminder_sent_at == reminded

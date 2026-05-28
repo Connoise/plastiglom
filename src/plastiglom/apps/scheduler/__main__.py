@@ -16,10 +16,15 @@ from pathlib import Path
 
 from plastiglom.apps.archiver.archiver import Archiver, FireEvent
 from plastiglom.apps.memory_indexer import QMDCLIIndexer, StubIndexer
+from plastiglom.apps.scheduler.reminders import run_reminders
 from plastiglom.apps.scheduler.scheduler import FiringClock, Scheduler, compute_lock_at
 from plastiglom.apps.telegram_bot import format_notification, send_text
 from plastiglom.packages.config import load_settings
-from plastiglom.packages.core.exercise import ExerciseCategory, ExerciseStatus
+from plastiglom.packages.core.exercise import (
+    ExerciseCategory,
+    ExerciseStatus,
+    active_followups,
+)
 from plastiglom.packages.vault.markdown import read_markdown_file
 from plastiglom.packages.vault.serializers import exercise_from_document, parse_entry
 
@@ -127,10 +132,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Skip the secondary-exercise pass after firing the main.",
     )
+    parser.add_argument(
+        "--remind",
+        action="store_true",
+        help=(
+            "Run the follow-up reminder pass instead of firing: ping any "
+            "still-open entry whose lock is within the reminder window."
+        ),
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     settings = load_settings()
+
+    if args.remind:
+        return _remind(settings)
+
     pool = _load_active_main(settings.exercises_dir)
     if not pool:
         logger.error("no active main exercises in %s", settings.exercises_dir)
@@ -166,7 +183,18 @@ def main(argv: list[str] | None = None) -> int:
     archiver.finalize_prior(now)
     entry = archiver.on_fire(FireEvent(exercise=exercise, fired_at=now, lock_at=lock_at))
     logger.info("fired entry=%s", entry.id)
-    _notify_fire(entry, settings)
+
+    # Tell the user up front when this main has a connected follow-up that
+    # may fire later today (§7.1). Loaded once and reused by the secondary pass.
+    # A secondary only fires while its parent's firing day is still going, so
+    # the mention is gated on the entry locking later the *same* day it fired
+    # (true for morning firings, false for evening ones that lock next morning).
+    secondary_pool = _load_active_secondary(settings.exercises_dir)
+    followup_possible_today = lock_at.date() == now.date()
+    has_followup = followup_possible_today and bool(
+        active_followups(exercise.id, secondary_pool)
+    )
+    _notify_fire(entry, settings, has_followup=has_followup)
 
     if not args.no_secondaries:
         _fire_eligible_secondaries(
@@ -175,21 +203,43 @@ def main(argv: list[str] | None = None) -> int:
             settings=settings,
             now=now,
             lock_at=lock_at,
+            secondary_pool=secondary_pool,
         )
     return 0
 
 
-def _notify_fire(entry, settings) -> None:
+def _remind(settings) -> int:
+    """Run the follow-up reminder heartbeat. No-op without Telegram creds."""
+    token = settings.telegram_bot_token
+    chat = settings.telegram_chat_id
+    if not token or not chat:
+        logger.info("reminders skipped: telegram not configured")
+        return 0
+    now = datetime.now(tz=settings.timezone)
+    reminded = run_reminders(
+        settings.vault_path,
+        now=now,
+        web_base_url=settings.web_base_url,
+        bot_token=token,
+        chat_id=chat,
+        window=settings.reminder_window,
+    )
+    logger.info("reminder pass complete: %d sent", len(reminded))
+    return 0
+
+
+def _notify_fire(entry, settings, *, has_followup: bool = False) -> None:
     """Push a Telegram notification for a freshly fired entry.
 
     No-op when Telegram is not configured. Send failures are swallowed by
     `send_text`; we only log here so a bad chat-id can't break archival.
+    `has_followup` adds a one-line mention that a connected exercise is coming.
     """
     token = settings.telegram_bot_token
     chat = settings.telegram_chat_id
     if not token or not chat:
         return
-    notif = format_notification(entry, settings.web_base_url)
+    notif = format_notification(entry, settings.web_base_url, has_followup=has_followup)
     text = f"{notif.title}\n\n{notif.body}"
     ok = send_text(text, bot_token=token, chat_id=chat)
     if not ok:
@@ -203,14 +253,17 @@ def _fire_eligible_secondaries(
     settings,
     now: datetime,
     lock_at: datetime,
+    secondary_pool: list | None = None,
 ) -> None:
     """Pick and fire context-triggered secondaries.
 
     A secondary fires only when its parent main has already fired earlier
     today. Capped per-firing and per-day per §7.1; lock_at matches the
-    main's so the day's edits seal together.
+    main's so the day's edits seal together. `secondary_pool` may be passed
+    in to avoid a re-read; when omitted it is loaded from disk.
     """
-    secondary_pool = _load_active_secondary(settings.exercises_dir)
+    if secondary_pool is None:
+        secondary_pool = _load_active_secondary(settings.exercises_dir)
     if not secondary_pool:
         return
 
