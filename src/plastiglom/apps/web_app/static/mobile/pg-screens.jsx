@@ -370,6 +370,15 @@ function ScreenPrompt({ theme, t, entry, loading, onOpen, onTab }) {
                 }}>{p}</div>
               ))}
 
+              {entry.has_followup && (
+                <div style={{
+                  marginTop: 14,
+                  fontFamily: 'JetBrains Mono, monospace',
+                  fontSize: 11, letterSpacing: 0.3, lineHeight: 1.4,
+                  color: theme.textDim, textAlign: 'center',
+                }}>↪ A follow-up to this exercise will arrive later today.</div>
+              )}
+
               <div style={{
                 display: 'flex', justifyContent: 'center', margin: '20px 0 12px',
               }}>

@@ -67,12 +67,26 @@ and initializing a private git repo inside the vault.
 # Fire the next main exercise (cron at 07:30 and 21:00 local):
 python -m plastiglom.apps.scheduler
 
+# Send follow-up reminders for still-open entries (cron hourly is plenty):
+python -m plastiglom.apps.scheduler --remind
+
 # Finalize any entries whose lock_at has passed:
 python -m plastiglom.apps.archiver --finalize
 
 # Serve the web app over Tailscale (loopback-only by default):
 python -m plastiglom.apps.web_app --host 127.0.0.1 --port 8001
 ```
+
+The firing notification carries the full prompt, the deep link, and — when
+the fired main has a connected secondary that may run later the same day — a
+one-line mention that a follow-up is coming. The same follow-up note shows on
+the web/mobile prompt screen.
+
+`--remind` is a separate, idempotent heartbeat: when an entry is still
+unanswered and its lock (the next main firing) is within
+`PLASTIGLOM_REMINDER_WINDOW_MINUTES` (default 60), it sends one more Telegram
+nudge carrying the exercise title plus a slice of the prompt. Each entry is
+pinged at most once; the stamp lives on the entry as `reminder_sent_at`.
 
 ## Phase 2
 

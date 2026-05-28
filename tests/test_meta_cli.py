@@ -79,7 +79,7 @@ def _seed_exercise_files(exercises_dir: Path, exercises: list[Exercise]) -> None
 
 
 def _settings(vault: Path) -> Settings:
-    from datetime import time
+    from datetime import time, timedelta
     from zoneinfo import ZoneInfo
 
     return Settings(
@@ -87,6 +87,7 @@ def _settings(vault: Path) -> Settings:
         timezone=ZoneInfo("UTC"),
         morning_fire=time(7, 30),
         evening_fire=time(21, 0),
+        reminder_window=timedelta(hours=1),
         telegram_bot_token=None,
         telegram_chat_id=None,
         web_base_url="http://test",

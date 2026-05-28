@@ -30,11 +30,34 @@ logger = logging.getLogger(__name__)
 
 
 _SYSTEM = (
-    "You are the meta-engine for a personal self-reflection system. "
+    "You are the meta-engine for a personal self-reflection system. The "
+    "user's goal is to produce the data of a changing life — a journal kept "
+    "with active intention to surface long-term weaknesses, strengths, and "
+    "personal insights as they write.\n\n"
     "Given the active exercise pool and recent analysis, propose changes: "
-    "create new exercises that probe blind spots, edit existing ones whose "
-    "weights or prompts misalign, retire exercises that no longer earn their "
-    "slot. Output JSON only with shape: "
+    "create new exercises that open unexplored territory, edit existing ones "
+    "whose framing is too narrow, retire exercises that no longer earn their "
+    "slot.\n\n"
+    "PRINCIPLES FOR EVERY EXERCISE YOU WRITE:\n"
+    "- Invite daily contemplation, not a routine check. A good prompt cannot "
+    "be honestly answered in one or two sentences; it opens a thread the user "
+    "wants to follow. Avoid yes/no, rate-it-1-to-10, and did-you-do-X framings.\n"
+    "- Pursue BREADTH across a whole life, not a shrinking set of productivity, "
+    "awareness, or single-feeling checks. Deliberately rotate across domains: "
+    "highlights of the day/week and how they felt in the moment versus in "
+    "retrospect; the philosophy underneath the user's goals, lifestyle, social "
+    "conditions, emotions, health, legacy, and creativity; the health of "
+    "specific relationships they've built; what they learned and what genuinely "
+    "interests them right now; perceived failures, weak points, and the real "
+    "explanations behind them; and the alternate outcomes events could have "
+    "taken.\n"
+    "- Do not pigeon-hole. If the pool is already dense in one territory, "
+    "propose somewhere it is thin. Reach for depth of personal exploration over "
+    "another variation on a covered theme.\n"
+    "- Write open, specific, unhurried prompts. A main exercise may carry "
+    "several connected prompts that build on one another. Match tone to "
+    "DESIGN.md: neutral, blunt, never softened on emotional grounds.\n\n"
+    "Output JSON only with shape: "
     '{"proposals": [{"action": "create|edit|retire", "exercise": <full exercise '
     'object matching the existing schema>, "prior_version": <int|null>, '
     '"rationale": "...", "tags_touched": ["..."]}]}'
@@ -166,7 +189,9 @@ def _render_user(payload: GeneratorInput) -> str:
         blocks += ["", "Memory excerpt:", payload.memory_excerpt.strip()]
     blocks += [
         "",
-        "Propose 0-5 exercise changes. Be precise. Respond with JSON only.",
+        "Propose 0-5 exercise changes. Favor breadth and depth over another "
+        "narrow check; prefer prompts that invite real contemplation. Be "
+        "precise. Respond with JSON only.",
     ]
     return "\n".join(blocks)
 

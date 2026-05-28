@@ -56,6 +56,7 @@ from plastiglom.apps.web_app.lookup import (
     load_entry,
 )
 from plastiglom.apps.web_app.templates import build_env
+from plastiglom.packages.core.exercise import active_followups
 from plastiglom.packages.vault.markdown import FrontmatterDocument, read_markdown_file
 from plastiglom.packages.vault.serializers import (
     exercise_from_document,
@@ -97,11 +98,35 @@ def create_app(
         ctx.setdefault("today", clock().date())
         return HTMLResponse(env.get_template(template).render(**ctx))
 
+    def has_followup(entry) -> bool:
+        """True when the entry's exercise has a connected follow-up coming.
+
+        Loads the active pool fresh so it tracks the live (vault) exercise
+        set; cheap relative to the per-request markdown reads already done.
+        Gated on the entry locking later the same day it fired — a secondary
+        only fires while its parent's firing day is still going, so an evening
+        main (which locks next morning) has no follow-up "later today".
+        """
+        if entry is None:
+            return False
+        if entry.lock_at.date() != entry.timestamp_fired.date():
+            return False
+        try:
+            pool = load_active_pool(vault_path / "exercises")
+        except Exception:
+            return False
+        return bool(active_followups(entry.exercise_id, pool))
+
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request) -> HTMLResponse:
         _ = request
         entry = latest_open_entry(vault_path, clock())
-        return render("home.html", entry=entry, title="Plastiglom")
+        return render(
+            "home.html",
+            entry=entry,
+            has_followup=has_followup(entry),
+            title="Plastiglom",
+        )
 
     @app.get("/entry/{entry_id}", response_class=HTMLResponse)
     def view_entry(entry_id: str) -> HTMLResponse:
@@ -110,7 +135,13 @@ def create_app(
         except (ValueError, FileNotFoundError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         locked = entry.is_locked(clock())
-        return render("entry.html", entry=entry, locked=locked, title=entry.title)
+        return render(
+            "entry.html",
+            entry=entry,
+            locked=locked,
+            has_followup=has_followup(entry),
+            title=entry.title,
+        )
 
     @app.post("/entry/{entry_id}")
     def submit_entry(entry_id: str, response: str = Form(default="")) -> RedirectResponse:
@@ -391,7 +422,12 @@ def create_app(
     @app.get("/api/today")
     def api_today() -> JSONResponse:
         entry = latest_open_entry(vault_path, clock())
-        return JSONResponse({"entry": _entry_payload(entry, clock()) if entry else None})
+        payload = (
+            _entry_payload(entry, clock(), has_followup=has_followup(entry))
+            if entry
+            else None
+        )
+        return JSONResponse({"entry": payload})
 
     @app.get("/api/entry/{entry_id}")
     def api_entry(entry_id: str) -> JSONResponse:
@@ -399,7 +435,9 @@ def create_app(
             entry = load_entry(vault_path, entry_id)
         except (ValueError, FileNotFoundError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return JSONResponse({"entry": _entry_payload(entry, clock())})
+        return JSONResponse(
+            {"entry": _entry_payload(entry, clock(), has_followup=has_followup(entry))}
+        )
 
     @app.post("/api/entry/{entry_id}")
     def api_submit_entry(
@@ -427,7 +465,9 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         updated = load_entry(vault_path, entry_id)
-        return JSONResponse({"entry": _entry_payload(updated, now_)})
+        return JSONResponse(
+            {"entry": _entry_payload(updated, now_, has_followup=has_followup(updated))}
+        )
 
     @app.get("/api/archive")
     def api_archive(limit: int = 30) -> JSONResponse:
@@ -498,7 +538,7 @@ def create_app(
     return app
 
 
-def _entry_payload(entry, now: datetime) -> dict:
+def _entry_payload(entry, now: datetime, *, has_followup: bool = False) -> dict:
     return {
         "id": entry.id,
         "title": entry.title,
@@ -510,6 +550,7 @@ def _entry_payload(entry, now: datetime) -> dict:
         "timestamp_fired": entry.timestamp_fired.isoformat(),
         "lock_at": entry.lock_at.isoformat(),
         "is_locked": entry.is_locked(now),
+        "has_followup": has_followup,
     }
 
 

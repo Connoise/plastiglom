@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from enum import StrEnum
 
@@ -87,3 +88,21 @@ class Exercise(BaseModel):
             raise ValueError("secondary exercises require parent_id")
         if self.category is ExerciseCategory.MAIN and self.parent_id is not None:
             raise ValueError("main exercises must not have parent_id")
+
+
+def active_followups(parent_id: str, pool: Iterable[Exercise]) -> list[Exercise]:
+    """Active secondary exercises connected to `parent_id`.
+
+    A "connected" exercise is a secondary whose `parent_id` points at a main
+    that fired earlier the same day; the scheduler may fire one later in the
+    day (see §7.1). Used to tell the user up front when a main has a follow-up
+    coming, and shared by both the scheduler and the web app so neither needs
+    to import the other (apps talk only through `packages/`).
+    """
+    return [
+        ex
+        for ex in pool
+        if ex.category is ExerciseCategory.SECONDARY
+        and ex.status is ExerciseStatus.ACTIVE
+        and ex.parent_id == parent_id
+    ]

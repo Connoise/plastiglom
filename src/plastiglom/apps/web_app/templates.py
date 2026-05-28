@@ -57,6 +57,9 @@ _HOME = """\
 {% for prompt in entry.prompt_snapshot %}
 <blockquote>{{ prompt }}</blockquote>
 {% endfor %}
+{% if has_followup %}
+<p class="meta">↪ A follow-up to this exercise will arrive later today.</p>
+{% endif %}
 <form method="post" action="/entry/{{ entry.id }}">
 <textarea name="response" autofocus>{{ entry.response }}</textarea>
 <button type="submit">{{ 'Update' if entry.response else 'Submit' }}</button>
@@ -80,6 +83,9 @@ _ENTRY = """\
 {% for prompt in entry.prompt_snapshot %}
 <blockquote>{{ prompt }}</blockquote>
 {% endfor %}
+{% if has_followup %}
+<p class="meta">↪ A follow-up to this exercise will arrive later today.</p>
+{% endif %}
 {% if locked %}
 <h2>Response</h2>
 <pre>{{ entry.response or '(no response)' }}</pre>

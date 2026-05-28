@@ -9,6 +9,7 @@ from plastiglom.packages.core.exercise import (
     Schedule,
     ScheduleWindow,
     WeightFactors,
+    active_followups,
 )
 
 
@@ -67,3 +68,25 @@ def test_prompts_stripped_and_nonempty():
     assert ex.prompts == ["q1?", "q2?"]
     with pytest.raises(ValueError):
         _exercise(prompts=["", "q?"])
+
+
+def test_active_followups_matches_active_children_only():
+    main = _exercise(id="main-x")
+    child_active = _exercise(
+        id="secondary-x", category=ExerciseCategory.SECONDARY, parent_id="main-x"
+    )
+    child_retired = _exercise(
+        id="secondary-x2",
+        category=ExerciseCategory.SECONDARY,
+        parent_id="main-x",
+        status=ExerciseStatus.RETIRED,
+    )
+    other_child = _exercise(
+        id="secondary-y", category=ExerciseCategory.SECONDARY, parent_id="main-y"
+    )
+    pool = [main, child_active, child_retired, other_child]
+
+    followups = active_followups("main-x", pool)
+    assert [f.id for f in followups] == ["secondary-x"]
+    # A main with no connected secondary returns nothing.
+    assert active_followups("main-y", [main, child_active]) == []

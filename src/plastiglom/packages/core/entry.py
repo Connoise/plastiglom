@@ -31,6 +31,10 @@ class Entry(BaseModel):
     timestamp_fired: datetime
     timestamp_submitted: datetime | None = None
     timestamp_last_edited: datetime | None = None
+    # Set the first time a follow-up reminder ping is sent for this entry, so
+    # the reminder heartbeat fires at most once per entry. Distinct from the
+    # firing notification, which always goes out at `on_fire`.
+    reminder_sent_at: datetime | None = None
     lock_at: datetime
     status: EntryStatus
     tags: list[str] = Field(default_factory=list)
@@ -40,3 +44,7 @@ class Entry(BaseModel):
 
     def is_locked(self, now: datetime) -> bool:
         return now >= self.lock_at
+
+    def has_response(self) -> bool:
+        """True when a substantive response exists (status-independent)."""
+        return bool(self.response.strip())
