@@ -35,6 +35,7 @@ class Settings:
     anthropic_api_key: str | None
     model_sonnet: str
     model_opus: str
+    thinking_budget_tokens: int
     qmd_bin: str
     # LLM scheduler clock-of-day overrides (local time, see apps/llm_scheduler).
     digest_weekly_at: time
@@ -95,7 +96,8 @@ def load_settings(dotenv_path: str | os.PathLike[str] | None = None) -> Settings
         web_base_url=os.environ.get("PLASTIGLOM_WEB_BASE_URL", "http://plastiglom.local"),
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
         model_sonnet=os.environ.get("PLASTIGLOM_MODEL_SONNET", "claude-sonnet-4-6"),
-        model_opus=os.environ.get("PLASTIGLOM_MODEL_OPUS", "claude-opus-4-7"),
+        model_opus=os.environ.get("PLASTIGLOM_MODEL_OPUS", "claude-opus-4-8"),
+        thinking_budget_tokens=int(os.environ.get("PLASTIGLOM_THINKING_BUDGET_TOKENS", "10000")),
         qmd_bin=os.environ.get("PLASTIGLOM_QMD_BIN", "qmd"),
         digest_weekly_at=_parse_hhmm(os.environ.get("PLASTIGLOM_DIGEST_WEEKLY_AT", "22:00")),
         analyzer_weekly_at=_parse_hhmm(

@@ -53,6 +53,8 @@ class LLMRouter:
     opus_model: str
     api_key: str | None = None
     usage_log_path: Path | None = None
+    # When set, opus-task calls use extended thinking at this budget instead of temperature.
+    thinking_budget_tokens: int | None = None
 
     def model_for(self, task: Task) -> str:
         if task in _SONNET_TASKS:
@@ -85,6 +87,21 @@ class LLMRouter:
         }
         if call.temperature is not None:
             create_kwargs["temperature"] = call.temperature
+        # Opus tasks: use extended thinking instead of temperature when configured.
+        # This overrides any caller-set temperature (deprecated on opus-4-8+).
+        thinking_budget = call.thinking_budget_tokens
+        if thinking_budget is None and task in _OPUS_TASKS:
+            thinking_budget = self.thinking_budget_tokens
+        if thinking_budget is not None:
+            create_kwargs.pop("temperature", None)
+            create_kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": thinking_budget,
+            }
+            # max_tokens must exceed budget_tokens
+            min_total = thinking_budget + 1000
+            if create_kwargs["max_tokens"] < min_total:
+                create_kwargs["max_tokens"] = min_total
         message = client.messages.create(**create_kwargs)
         elapsed_ms = int((time.monotonic() - started) * 1000)
 

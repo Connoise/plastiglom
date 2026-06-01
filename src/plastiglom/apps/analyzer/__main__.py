@@ -38,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
         opus_model=settings.model_opus,
         api_key=settings.anthropic_api_key,
         usage_log_path=settings.logs_dir / "llm_usage.jsonl",
+        thinking_budget_tokens=settings.thinking_budget_tokens,
     )
 
     if args.command == "opus":

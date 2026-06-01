@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from enum import StrEnum
 from pathlib import Path
 
@@ -303,8 +303,12 @@ def _report_path(vault: Path, request: AnalysisRequest) -> Path:
     return analysis_query_path(vault, date.today(), slug)
 
 
-def week_bounds(anchor: date) -> tuple[datetime, datetime]:
-    """Return the [start, end) datetimes for the ISO week containing `anchor`."""
+def week_bounds(anchor: date, tz: tzinfo | None = None) -> tuple[datetime, datetime]:
+    """Return the [start, end) datetimes for the ISO week containing `anchor`.
+
+    Pass `tz` when comparing against timezone-aware entry timestamps; the
+    returned bounds are aware in that case and naive otherwise.
+    """
     monday = anchor - timedelta(days=anchor.weekday())
-    start = datetime.combine(monday, datetime.min.time(), tzinfo=UTC)
+    start = datetime.combine(monday, datetime.min.time(), tzinfo=tz)
     return start, start + timedelta(days=7)

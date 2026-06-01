@@ -13,6 +13,9 @@ class LLMCall:
     cacheable_system: list[str] = field(default_factory=list)
     max_tokens: int = 4096
     temperature: float | None = None
+    # Extended thinking: when set, passes a thinking block instead of temperature.
+    # Required for claude-opus-4-8+ (temperature is deprecated on those models).
+    thinking_budget_tokens: int | None = None
 
 
 @dataclass

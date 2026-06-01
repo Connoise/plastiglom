@@ -113,7 +113,7 @@ def _run_analyzer_weekly(ctx: JobContext) -> str:
     today = ctx.now.astimezone(ctx.settings.timezone).date()
     from plastiglom.apps.analyzer.analyzer import week_bounds
 
-    start, end = week_bounds(today - timedelta(days=1))
+    start, end = week_bounds(today - timedelta(days=1), tz=ctx.settings.timezone)
     analyzer = Analyzer(vault_path=ctx.settings.vault_path, router=ctx.router)
     report = analyzer.run(
         AnalysisRequest(

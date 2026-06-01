@@ -75,7 +75,7 @@ class GeneratorInput:
 class Generator:
     router: LLMRouter
     vault_path: Path
-    proposed_by: str = "opus-4-7"
+    proposed_by: str = "opus-4-8"
 
     def generate(
         self,
@@ -94,7 +94,6 @@ class Generator:
             user=_render_user(payload),
             cacheable_system=[_render_pool(payload.pool)],
             max_tokens=4096,
-            temperature=0.2,
         )
         response = self.router.invoke(Task.EXERCISE_EDIT, call)
         proposals = parse_response(response.text, payload.pool)

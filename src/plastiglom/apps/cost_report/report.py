@@ -35,6 +35,12 @@ class ModelPrice:
 # Numbers come from Anthropic's pricing page; override via the env hook below
 # if the user has a different contract.
 DEFAULT_PRICES: dict[str, ModelPrice] = {
+    "claude-opus-4-8": ModelPrice(
+        input_per_1k=0.015,
+        output_per_1k=0.075,
+        cache_read_per_1k=0.0015,
+        cache_creation_per_1k=0.01875,
+    ),
     "claude-opus-4-7": ModelPrice(
         input_per_1k=0.015,
         output_per_1k=0.075,
