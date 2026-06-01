@@ -16,19 +16,32 @@ from pathlib import Path
 
 from plastiglom.apps.archiver.archiver import Archiver, FireEvent
 from plastiglom.apps.memory_indexer import QMDCLIIndexer, StubIndexer
-from plastiglom.apps.scheduler.scheduler import FiringClock, Scheduler, compute_lock_at
+from plastiglom.apps.scheduler.scheduler import (
+    FiringClock,
+    Scheduler,
+    _window_for,
+    compute_lock_at,
+)
 from plastiglom.apps.telegram_bot import format_notification, send_text
 from plastiglom.packages.config import load_settings
-from plastiglom.packages.core.exercise import ExerciseCategory, ExerciseStatus
+from plastiglom.packages.core.exercise import (
+    ExerciseCategory,
+    ExerciseStatus,
+    ScheduleWindow,
+)
 from plastiglom.packages.vault.markdown import read_markdown_file
 from plastiglom.packages.vault.serializers import exercise_from_document, parse_entry
 
 logger = logging.getLogger(__name__)
 
-# Span of recent firings used to suppress unintentional repeats. With the pool
-# sized to fill a week of 2x-daily firings (§7.7), 7 covers the most recent
-# ~3-4 days and still leaves ample candidates for the weighted draw.
-RECENT_FIRINGS_LOOKBACK = 7
+# Per §7.7: "Maintains enough exercises to fill a week without unintentional
+# repeats." We enforce that by excluding the (pool_size - 1) most recent firings
+# *of the same window* from selection, so a window rotates through its entire
+# pool before any exercise can fire again. The lookback is window-scoped because
+# the global lookback used to be eaten by the other window's firings, making
+# repeats reappear every ~3-4 days. The cap is a safety net — the active pool
+# size is the real bound.
+RECENT_FIRINGS_LOOKBACK_CAP = 50
 
 # Per §7.1: at most three secondaries per day. We let at most one fire on
 # each scheduler invocation so the user isn't blasted with two prompts at
@@ -98,25 +111,51 @@ def _todays_firings(entries_root: Path, day: date) -> tuple[set[str], set[str]]:
     return main_ids, sec_ids
 
 
-def _recent_main_exercise_ids(entries_root: Path, *, limit: int) -> set[str]:
+def _recent_main_exercise_ids(
+    entries_root: Path,
+    *,
+    limit: int,
+    window: ScheduleWindow | None = None,
+    clock: FiringClock | None = None,
+) -> set[str]:
     """Return main exercise IDs from the most recent `limit` firings.
 
     Used to forbid reuse so morning/evening windows don't repeat the same
-    exercise back-to-back. Secondaries (id prefix `secondary-`) are ignored —
-    the secondary picker enforces its own per-day uniqueness.
+    exercise within a pool rotation. Secondaries (id prefix `secondary-`) are
+    ignored — the secondary picker enforces its own per-day uniqueness.
+
+    When `window` and `clock` are supplied, only firings that fell in that
+    window are counted. This is the path the CLI uses so a morning selection
+    excludes recent *morning* firings (and likewise for evenings); without the
+    window scope, an active evening pool would consume half the lookback and
+    let morning exercises repeat after only ~3 days.
     """
     if limit <= 0 or not entries_root.exists():
         return set()
+    if (window is None) != (clock is None):
+        raise ValueError("window and clock must be provided together")
     fired: list[tuple[datetime, str]] = []
     for md_path in entries_root.rglob("*.md"):
         try:
             entry = parse_entry(read_markdown_file(md_path))
         except Exception:
             continue
-        if entry.exercise_id.startswith("main-"):
-            fired.append((entry.timestamp_fired, entry.exercise_id))
+        if not entry.exercise_id.startswith("main-"):
+            continue
+        if window is not None and _window_for(entry.timestamp_fired, clock) is not window:
+            continue
+        fired.append((entry.timestamp_fired, entry.exercise_id))
     fired.sort(key=lambda r: r[0], reverse=True)
     return {ex_id for _, ex_id in fired[:limit]}
+
+
+def _window_pool_size(pool: list, window: ScheduleWindow) -> int:
+    """Count active mains whose schedule targets `window` (contextual counts for both)."""
+    return sum(
+        1
+        for ex in pool
+        if ex.schedule.window is window or ex.schedule.window is ScheduleWindow.CONTEXTUAL
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -142,8 +181,17 @@ def main(argv: list[str] | None = None) -> int:
         rng=random.Random(),
     )
     now = datetime.now(tz=settings.timezone)
+    upcoming_window = _window_for(now, scheduler.clock)
+    # One slot short of the per-window pool: leaves exactly one unseen exercise
+    # to fire (or a couple, when the contextual fallback enlarges the pool),
+    # which is what "fill a week without unintentional repeats" requires.
+    pool_size = _window_pool_size(pool, upcoming_window)
+    window_lookback = min(max(pool_size - 1, 0), RECENT_FIRINGS_LOOKBACK_CAP)
     recent_ids = _recent_main_exercise_ids(
-        settings.entries_dir, limit=RECENT_FIRINGS_LOOKBACK
+        settings.entries_dir,
+        limit=window_lookback,
+        window=upcoming_window,
+        clock=scheduler.clock,
     )
     exercise = scheduler.select_next_main(pool, when=now, recent_ids=recent_ids)
     lock_at = compute_lock_at(now, scheduler.clock, scheduler.tz)
