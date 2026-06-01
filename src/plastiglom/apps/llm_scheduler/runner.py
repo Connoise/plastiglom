@@ -101,7 +101,7 @@ def _run_weekly_digest(ctx: JobContext) -> str:
     """Sonnet weekly digest over the most recently completed ISO week."""
     today = ctx.now.astimezone(ctx.settings.timezone).date()
     # Anchor on yesterday so we always cover a fully elapsed week.
-    start, end = digest_week_bounds(today - timedelta(days=1))
+    start, end = digest_week_bounds(today - timedelta(days=1), tz=ctx.settings.timezone)
     digest = WeeklyDigest(vault_path=ctx.settings.vault_path, router=ctx.router)
     path = digest.run(start, end)
     logger.info("weekly digest wrote %s", path)
