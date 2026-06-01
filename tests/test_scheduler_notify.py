@@ -94,3 +94,34 @@ def test_notify_fire_absorbs_send_failure(monkeypatch) -> None:
         _entry(),
         _StubSettings(telegram_bot_token="T", telegram_chat_id="C"),
     )
+
+
+def test_notify_fire_includes_followup_mention(monkeypatch) -> None:
+    from plastiglom.apps.telegram_bot.notifier import FOLLOWUP_NOTE
+
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "plastiglom.apps.scheduler.__main__.send_text",
+        lambda text, **k: captured.update(text=text) or True,
+    )
+    _notify_fire(
+        _entry(),
+        _StubSettings(telegram_bot_token="T", telegram_chat_id="C"),
+        has_followup=True,
+    )
+    assert FOLLOWUP_NOTE in captured["text"]
+
+
+def test_notify_fire_omits_followup_by_default(monkeypatch) -> None:
+    from plastiglom.apps.telegram_bot.notifier import FOLLOWUP_NOTE
+
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        "plastiglom.apps.scheduler.__main__.send_text",
+        lambda text, **k: captured.update(text=text) or True,
+    )
+    _notify_fire(
+        _entry(),
+        _StubSettings(telegram_bot_token="T", telegram_chat_id="C"),
+    )
+    assert FOLLOWUP_NOTE not in captured["text"]

@@ -23,6 +23,13 @@ TELEGRAM_API_BASE = "https://api.telegram.org"
 DEFAULT_SEND_TIMEOUT_SECONDS = 10.0
 
 
+# How much of the prompt a reminder ping carries. Reminders are a nudge, not
+# the full prompt re-sent — enough to recall which exercise is waiting.
+REMINDER_PROMPT_CHARS = 160
+
+FOLLOWUP_NOTE = "A follow-up to this exercise will arrive later today."
+
+
 @dataclass(frozen=True)
 class Notification:
     title: str
@@ -30,11 +37,46 @@ class Notification:
     deep_link: str
 
 
-def format_notification(entry: Entry, web_base_url: str) -> Notification:
-    deep_link = f"{web_base_url.rstrip('/')}/entry/{quote(entry.id)}"
+def _deep_link(entry: Entry, web_base_url: str) -> str:
+    return f"{web_base_url.rstrip('/')}/entry/{quote(entry.id)}"
+
+
+def format_notification(
+    entry: Entry,
+    web_base_url: str,
+    *,
+    has_followup: bool = False,
+) -> Notification:
+    deep_link = _deep_link(entry, web_base_url)
     prompt_text = "\n".join(entry.prompt_snapshot)
     title = f"{entry.title}"
-    body = f"{prompt_text}\n\nRespond: {deep_link}"
+    body = prompt_text
+    if has_followup:
+        body += f"\n\n↪ {FOLLOWUP_NOTE}"
+    body += f"\n\nRespond: {deep_link}"
+    return Notification(title=title, body=body, deep_link=deep_link)
+
+
+def _prompt_excerpt(entry: Entry, limit: int = REMINDER_PROMPT_CHARS) -> str:
+    """A short slice of the prompt, for reminders that nudge without re-sending."""
+    text = " ".join(p.strip() for p in entry.prompt_snapshot).strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def format_reminder(entry: Entry, web_base_url: str) -> Notification:
+    """A follow-up nudge for an entry still unanswered as its lock nears.
+
+    Carries the exercise title *and* a slice of the prompt (not just the
+    title) so the message is actionable on its own, plus the deep link.
+    """
+    deep_link = _deep_link(entry, web_base_url)
+    title = f"Reminder · {entry.title}"
+    body = (
+        f"Still open — a new exercise is coming soon.\n\n"
+        f"{_prompt_excerpt(entry)}\n\nRespond: {deep_link}"
+    )
     return Notification(title=title, body=body, deep_link=deep_link)
 
 
