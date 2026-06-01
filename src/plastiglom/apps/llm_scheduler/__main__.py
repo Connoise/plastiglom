@@ -160,7 +160,7 @@ def _build_router(settings: Settings) -> LLMRouter:
         opus_model=settings.model_opus,
         api_key=settings.anthropic_api_key,
         usage_log_path=settings.logs_dir / "llm_usage.jsonl",
-        thinking_budget_tokens=settings.thinking_budget_tokens,
+        thinking_effort=settings.thinking_effort,
     )
 
 
