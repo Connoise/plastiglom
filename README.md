@@ -88,6 +88,13 @@ unanswered and its lock (the next main firing) is within
 nudge carrying the exercise title plus a slice of the prompt. Each entry is
 pinged at most once; the stamp lives on the entry as `reminder_sent_at`.
 
+Recommended crontab entry (staggered 15 min after `llm_schedule.py`):
+
+```cron
+15 * * * *  cd '/path/to/Plastiglom' && PLASTIGLOM_VAULT_PATH=/path/to/vault \
+              .venv/bin/python3 scripts/remind.py >> /path/to/vault/logs/remind.log 2>&1
+```
+
 ## Phase 2
 
 ```bash
