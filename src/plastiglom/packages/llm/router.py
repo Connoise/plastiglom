@@ -47,14 +47,21 @@ _OPUS_TASKS = {
 }
 
 
+# Opus tasks run adaptive thinking, which consumes part of the output budget.
+# Give those calls headroom so a thinking pass plus the final answer aren't
+# truncated (non-streaming, so kept under the SDK's ~16K timeout guard).
+_OPUS_THINKING_MIN_MAX_TOKENS = 16000
+
+
 @dataclass
 class LLMRouter:
     sonnet_model: str
     opus_model: str
     api_key: str | None = None
     usage_log_path: Path | None = None
-    # When set, opus-task calls use extended thinking at this budget instead of temperature.
-    thinking_budget_tokens: int | None = None
+    # When set, opus-task calls use adaptive thinking at this effort
+    # ("low" | "medium" | "high" | "max") instead of temperature.
+    thinking_effort: str | None = None
 
     def model_for(self, task: Task) -> str:
         if task in _SONNET_TASKS:
@@ -87,21 +94,21 @@ class LLMRouter:
         }
         if call.temperature is not None:
             create_kwargs["temperature"] = call.temperature
-        # Opus tasks: use extended thinking instead of temperature when configured.
-        # This overrides any caller-set temperature (deprecated on opus-4-8+).
-        thinking_budget = call.thinking_budget_tokens
-        if thinking_budget is None and task in _OPUS_TASKS:
-            thinking_budget = self.thinking_budget_tokens
-        if thinking_budget is not None:
+        # Opus tasks: use adaptive thinking + effort instead of temperature.
+        # opus-4-7+ removed both `thinking.type=enabled` (with budget_tokens) and
+        # the sampling params, so we let the model decide how much to think and
+        # tune depth via output_config.effort. This overrides any caller-set
+        # temperature.
+        effort = call.thinking_effort
+        if effort is None and task in _OPUS_TASKS:
+            effort = self.thinking_effort
+        if effort is not None:
             create_kwargs.pop("temperature", None)
-            create_kwargs["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": thinking_budget,
-            }
-            # max_tokens must exceed budget_tokens
-            min_total = thinking_budget + 1000
-            if create_kwargs["max_tokens"] < min_total:
-                create_kwargs["max_tokens"] = min_total
+            create_kwargs["thinking"] = {"type": "adaptive"}
+            create_kwargs["output_config"] = {"effort": effort}
+            # Adaptive thinking spends part of the output budget; give it room.
+            if create_kwargs["max_tokens"] < _OPUS_THINKING_MIN_MAX_TOKENS:
+                create_kwargs["max_tokens"] = _OPUS_THINKING_MIN_MAX_TOKENS
         message = client.messages.create(**create_kwargs)
         elapsed_ms = int((time.monotonic() - started) * 1000)
 
