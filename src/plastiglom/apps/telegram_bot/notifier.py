@@ -27,7 +27,7 @@ DEFAULT_SEND_TIMEOUT_SECONDS = 10.0
 # the full prompt re-sent — enough to recall which exercise is waiting.
 REMINDER_PROMPT_CHARS = 160
 
-FOLLOWUP_NOTE = "A follow-up to this exercise will arrive later today."
+FOLLOWUP_NOTE = "A follow-up to this exercise will arrive in about four hours."
 
 
 @dataclass(frozen=True)

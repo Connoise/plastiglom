@@ -26,6 +26,11 @@ from plastiglom.packages.core.exercise import (
     ScheduleWindow,
 )
 
+# How long after a main exercise fires before its secondary may prompt the
+# user. Secondaries never go out together with the parent; the delay is the
+# within-day time-variance probe (§7.1).
+SECONDARY_DELAY = timedelta(hours=4)
+
 
 @dataclass(frozen=True)
 class FiringClock:
@@ -123,16 +128,17 @@ class Scheduler:
         pool: list[Exercise],
         *,
         when: datetime,
-        parent_ids_fired_today: set[str],
+        eligible_parent_ids: set[str],
         already_fired_secondary_ids: set[str],
         max_count: int = 3,
     ) -> list[Exercise]:
         """Pick context-triggered secondary exercises for the current moment.
 
         Per §7.1: at most three secondaries per day, each tied to a parent
-        main exercise that fired earlier today. We do not pick a secondary
-        whose parent hasn't fired yet — that would defeat the within-day
-        time-variance probe.
+        main exercise that fired earlier. The caller computes
+        `eligible_parent_ids` — parents that fired at least `SECONDARY_DELAY`
+        ago and whose lock hasn't passed — so a secondary never prompts the
+        user at the same time as its parent.
         """
         if max_count <= 0:
             return []
@@ -141,7 +147,7 @@ class Scheduler:
             for ex in pool
             if ex.status is ExerciseStatus.ACTIVE
             and ex.category is ExerciseCategory.SECONDARY
-            and ex.parent_id in parent_ids_fired_today
+            and ex.parent_id in eligible_parent_ids
             and ex.id not in already_fired_secondary_ids
         ]
         if not candidates:

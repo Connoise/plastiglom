@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from plastiglom.apps.analyzer.digest import WeeklyDigest, compute_stats, week_bounds
+from plastiglom.apps.analyzer.digest import MonthlyDigest, compute_stats, month_bounds
 from plastiglom.apps.archiver.archiver import Archiver, FireEvent, SubmitRequest
 from plastiglom.packages.core.entry import Entry, EntryStatus
 
@@ -38,7 +38,7 @@ def test_compute_stats_counts_by_status_exercise_and_tags():
     assert stats.submitted_words == 11
 
 
-def test_weekly_digest_writes_report_and_stats(vault, main_exercise):
+def test_monthly_digest_writes_report_and_stats(vault, main_exercise):
     # Seed two submitted entries via the archiver.
     archiver = Archiver(vault)
     fired1 = datetime(2026, 5, 11, 21, 0, tzinfo=UTC)  # Monday
@@ -61,17 +61,25 @@ def test_weekly_digest_writes_report_and_stats(vault, main_exercise):
             )
         )
 
-    start, end = week_bounds(fired1.date(), tz=UTC)
-    digest = WeeklyDigest(vault_path=vault, router=None)
+    start, end = month_bounds(fired1.date(), tz=UTC)
+    digest = MonthlyDigest(vault_path=vault, router=None)
     out = digest.run(start, end)
+    assert out.name == "2026-05-digest.md"
+    assert out.parent.name == "monthly"
     text = out.read_text(encoding="utf-8")
     assert "total entries: 2" in text
     assert "`main-evening-review`: 2" in text
     assert "Themes (Sonnet)" not in text  # router is None -> no LLM themes section
 
 
-def test_week_bounds_is_monday_to_monday():
-    thursday = datetime(2026, 5, 14).date()
-    start, end = week_bounds(thursday)
-    assert start.weekday() == 0  # Monday
-    assert (end - start).days == 7
+def test_month_bounds_is_first_to_first():
+    mid_month = datetime(2026, 5, 14).date()
+    start, end = month_bounds(mid_month)
+    assert (start.year, start.month, start.day) == (2026, 5, 1)
+    assert (end.year, end.month, end.day) == (2026, 6, 1)
+
+
+def test_month_bounds_wraps_december():
+    start, end = month_bounds(datetime(2026, 12, 31).date())
+    assert (start.year, start.month, start.day) == (2026, 12, 1)
+    assert (end.year, end.month, end.day) == (2027, 1, 1)

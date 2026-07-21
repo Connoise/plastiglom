@@ -12,8 +12,7 @@ from plastiglom.apps.analyzer.analyzer import (
     Cadence,
     week_bounds,
 )
-from plastiglom.apps.analyzer.digest import WeeklyDigest
-from plastiglom.apps.analyzer.digest import week_bounds as digest_week_bounds
+from plastiglom.apps.analyzer.digest import MonthlyDigest, month_bounds
 from plastiglom.apps.meta_engine.generator import Generator
 from plastiglom.packages.config import load_settings
 from plastiglom.packages.llm.router import LLMRouter
@@ -28,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     opus.add_argument("--query", default=None)
     opus.add_argument("--slug", default=None)
 
-    digest = sub.add_parser("digest", help="Phase 2 Sonnet weekly digest (§9 Phase 2).")
+    digest = sub.add_parser("digest", help="Phase 2 Sonnet monthly digest (§9 Phase 2).")
     digest.add_argument("--no-themes", action="store_true", help="Skip the LLM themes pass.")
 
     args = parser.parse_args(argv)
@@ -90,9 +89,11 @@ def _run_opus(args: argparse.Namespace, settings, router: LLMRouter) -> int:
 
 
 def _run_digest(args: argparse.Namespace, settings, router: LLMRouter) -> int:
+    # Cover the most recently completed calendar month, matching `opus monthly`.
     today = date.today()
-    start, end = digest_week_bounds(today - timedelta(days=1))
-    digest = WeeklyDigest(
+    last_of_prev = today.replace(day=1) - timedelta(days=1)
+    start, end = month_bounds(last_of_prev)
+    digest = MonthlyDigest(
         vault_path=settings.vault_path,
         router=None if args.no_themes else router,
     )

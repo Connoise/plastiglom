@@ -27,9 +27,8 @@ from plastiglom.apps.analyzer.analyzer import (
 from plastiglom.apps.analyzer.analyzer import (
     Cadence as AnalyzerCadence,
 )
-from plastiglom.apps.analyzer.digest import WeeklyDigest
-from plastiglom.apps.analyzer.digest import week_bounds as digest_week_bounds
-from plastiglom.apps.llm_scheduler.cadence import Cadence, MonthlyDay, Weekly
+from plastiglom.apps.analyzer.digest import MonthlyDigest, month_bounds
+from plastiglom.apps.llm_scheduler.cadence import Cadence, MonthlyDay
 from plastiglom.apps.llm_scheduler.state import load_state, save_state
 from plastiglom.apps.meta_engine.blind_spots import detect_blind_spots
 from plastiglom.apps.meta_engine.generator import Generator
@@ -97,33 +96,15 @@ class SchedulerReport:
 # ---------------------------------------------------------------------------
 
 
-def _run_weekly_digest(ctx: JobContext) -> str:
-    """Sonnet weekly digest over the most recently completed ISO week."""
+def _run_monthly_digest(ctx: JobContext) -> str:
+    """Sonnet monthly digest over the most recently completed calendar month."""
     today = ctx.now.astimezone(ctx.settings.timezone).date()
-    # Anchor on yesterday so we always cover a fully elapsed week.
-    start, end = digest_week_bounds(today - timedelta(days=1), tz=ctx.settings.timezone)
-    digest = WeeklyDigest(vault_path=ctx.settings.vault_path, router=ctx.router)
+    last_of_prev = today.replace(day=1) - timedelta(days=1)
+    start, end = month_bounds(last_of_prev, tz=ctx.settings.timezone)
+    digest = MonthlyDigest(vault_path=ctx.settings.vault_path, router=ctx.router)
     path = digest.run(start, end)
-    logger.info("weekly digest wrote %s", path)
-    return f"weekly digest written to {path}"
-
-
-def _run_analyzer_weekly(ctx: JobContext) -> str:
-    """Opus weekly analysis over the most recently completed ISO week."""
-    today = ctx.now.astimezone(ctx.settings.timezone).date()
-    from plastiglom.apps.analyzer.analyzer import week_bounds
-
-    start, end = week_bounds(today - timedelta(days=1), tz=ctx.settings.timezone)
-    analyzer = Analyzer(vault_path=ctx.settings.vault_path, router=ctx.router)
-    report = analyzer.run(
-        AnalysisRequest(
-            cadence=AnalyzerCadence.WEEKLY,
-            window_start=start,
-            window_end=end,
-        )
-    )
-    logger.info("weekly analysis wrote %s", report)
-    return f"weekly analysis written to {report}"
+    logger.info("monthly digest wrote %s", path)
+    return f"monthly digest written to {path}"
 
 
 def _run_analyzer_monthly(ctx: JobContext) -> str:
@@ -199,25 +180,19 @@ def _run_meta_blind_spots(ctx: JobContext) -> str:
 def build_default_jobs(settings: Settings) -> list[Job]:
     """Construct the default LLM job registry.
 
-    Defaults follow DESIGN.md §7.6:
-      - digest_weekly: Sunday 22:00 local
-      - analyzer_weekly: Sunday 22:30 local (after digest finishes)
+    Defaults follow DESIGN.md §7.6 — AI summaries land once at the end of
+    each month:
+      - digest_monthly: last day of the month at 22:00 local
       - analyzer_monthly: last day of the month at 23:00 local
       - meta_blind_spots: 15th of the month at 04:00 local
     """
     tz = settings.timezone
     return [
         Job(
-            name="digest_weekly",
-            description="Sonnet weekly digest (§9 Phase 2)",
-            cadence=Weekly(weekday=6, at=_t(settings.digest_weekly_at), tz=tz),
-            run=_run_weekly_digest,
-        ),
-        Job(
-            name="analyzer_weekly",
-            description="Opus weekly analysis (§7.6)",
-            cadence=Weekly(weekday=6, at=_t(settings.analyzer_weekly_at), tz=tz),
-            run=_run_analyzer_weekly,
+            name="digest_monthly",
+            description="Sonnet monthly digest (§9 Phase 2)",
+            cadence=MonthlyDay(day=-1, at=_t(settings.digest_monthly_at), tz=tz),
+            run=_run_monthly_digest,
         ),
         Job(
             name="analyzer_monthly",

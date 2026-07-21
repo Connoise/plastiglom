@@ -46,7 +46,7 @@ def test_secondary_picker_requires_parent_to_have_fired():
     chosen = _scheduler().select_secondaries(
         [parent, sec_a, sec_orphan],
         when=datetime(2026, 5, 14, 14, 0, tzinfo=UTC),
-        parent_ids_fired_today={"main-a"},
+        eligible_parent_ids={"main-a"},
         already_fired_secondary_ids=set(),
     )
     assert {ex.id for ex in chosen} == {"secondary-a-followup"}
@@ -59,7 +59,7 @@ def test_secondary_picker_excludes_already_fired():
     chosen = _scheduler().select_secondaries(
         [parent, sec_a, sec_b],
         when=datetime(2026, 5, 14, 14, 0, tzinfo=UTC),
-        parent_ids_fired_today={"main-a"},
+        eligible_parent_ids={"main-a"},
         already_fired_secondary_ids={"secondary-a"},
     )
     assert {ex.id for ex in chosen} == {"secondary-a-2"}
@@ -74,7 +74,7 @@ def test_secondary_picker_caps_at_max_count():
     chosen = _scheduler(seed=42).select_secondaries(
         pool,
         when=datetime(2026, 5, 14, 14, 0, tzinfo=UTC),
-        parent_ids_fired_today={"main-a"},
+        eligible_parent_ids={"main-a"},
         already_fired_secondary_ids=set(),
         max_count=3,
     )
@@ -89,7 +89,7 @@ def test_secondary_picker_returns_empty_when_max_count_zero():
     chosen = _scheduler().select_secondaries(
         [parent, sec],
         when=datetime(2026, 5, 14, tzinfo=UTC),
-        parent_ids_fired_today={"main-a"},
+        eligible_parent_ids={"main-a"},
         already_fired_secondary_ids=set(),
         max_count=0,
     )
@@ -107,7 +107,7 @@ def test_secondary_picker_skips_retired_exercises():
     chosen = _scheduler().select_secondaries(
         [parent, retired],
         when=datetime(2026, 5, 14, tzinfo=UTC),
-        parent_ids_fired_today={"main-a"},
+        eligible_parent_ids={"main-a"},
         already_fired_secondary_ids=set(),
     )
     assert chosen == []

@@ -38,8 +38,7 @@ class Settings:
     thinking_effort: str
     qmd_bin: str
     # LLM scheduler clock-of-day overrides (local time, see apps/llm_scheduler).
-    digest_weekly_at: time
-    analyzer_weekly_at: time
+    digest_monthly_at: time
     analyzer_monthly_at: time
     meta_blind_spots_at: time
 
@@ -99,9 +98,8 @@ def load_settings(dotenv_path: str | os.PathLike[str] | None = None) -> Settings
         model_opus=os.environ.get("PLASTIGLOM_MODEL_OPUS", "claude-opus-4-8"),
         thinking_effort=os.environ.get("PLASTIGLOM_THINKING_EFFORT", "high"),
         qmd_bin=os.environ.get("PLASTIGLOM_QMD_BIN", "qmd"),
-        digest_weekly_at=_parse_hhmm(os.environ.get("PLASTIGLOM_DIGEST_WEEKLY_AT", "22:00")),
-        analyzer_weekly_at=_parse_hhmm(
-            os.environ.get("PLASTIGLOM_ANALYZER_WEEKLY_AT", "22:30")
+        digest_monthly_at=_parse_hhmm(
+            os.environ.get("PLASTIGLOM_DIGEST_MONTHLY_AT", "22:00")
         ),
         analyzer_monthly_at=_parse_hhmm(
             os.environ.get("PLASTIGLOM_ANALYZER_MONTHLY_AT", "23:00")

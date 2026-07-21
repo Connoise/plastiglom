@@ -146,10 +146,23 @@ def test_no_followup_when_no_connected_secondary(vault, main_exercise):
     assert payload["has_followup"] is False
 
 
-def test_no_followup_for_evening_entry_that_locks_next_day(vault, main_exercise, fired_fixture):
-    # Evening firing locks next morning, so even with a connected secondary
-    # there is no follow-up "later today".
+def test_followup_surfaced_for_evening_entry_locking_next_day(vault, main_exercise, fired_fixture):
+    # Evening firing locks next morning; the 4h-delayed secondary still lands
+    # before the lock, so the follow-up mention shows.
     fired, _ = fired_fixture
+    _seed_followup_secondary(vault)
+    client = _client(vault, fired + timedelta(minutes=5))
+    payload = client.get("/api/today").json()["entry"]
+    assert payload["has_followup"] is True
+
+
+def test_no_followup_when_lock_lands_before_the_delay(vault, main_exercise):
+    # A secondary prompts 4h after the parent; if the entry locks sooner
+    # than that, no follow-up can arrive and the mention is suppressed.
+    archiver = Archiver(vault)
+    fired = datetime(2026, 5, 14, 7, 30, tzinfo=UTC)
+    lock_at = fired + timedelta(hours=3)
+    archiver.on_fire(FireEvent(exercise=main_exercise, fired_at=fired, lock_at=lock_at))
     _seed_followup_secondary(vault)
     client = _client(vault, fired + timedelta(minutes=5))
     payload = client.get("/api/today").json()["entry"]

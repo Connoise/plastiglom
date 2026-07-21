@@ -176,20 +176,21 @@ def test_state_load_ignores_malformed_entries(tmp_path: Path) -> None:
 
 
 def test_default_registry_names_match_design_docs() -> None:
-    """Smoke check: the default registry exposes the four scheduled jobs the
-    DESIGN doc names. Cadence details are validated by the cadence tests."""
+    """Smoke check: the default registry exposes the three scheduled jobs the
+    DESIGN doc names — AI summaries fire monthly, not weekly. Cadence details
+    are validated by the cadence tests."""
 
     class _Settings:
         timezone = UTC
-        digest_weekly_at = time(22, 0)
-        analyzer_weekly_at = time(22, 30)
+        digest_monthly_at = time(22, 0)
         analyzer_monthly_at = time(23, 0)
         meta_blind_spots_at = time(4, 0)
 
     jobs = build_default_jobs(_Settings())  # type: ignore[arg-type]
     assert {j.name for j in jobs} == {
-        "digest_weekly",
-        "analyzer_weekly",
+        "digest_monthly",
         "analyzer_monthly",
         "meta_blind_spots",
     }
+    monthly = {j.name: j.cadence.describe() for j in jobs}
+    assert monthly["digest_monthly"] == "monthly on last day of month at 22:00"

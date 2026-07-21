@@ -67,6 +67,12 @@ and initializing a private git repo inside the vault.
 # Fire the next main exercise (cron at 07:30 and 21:00 local):
 python -m plastiglom.apps.scheduler
 
+# Fire any secondary exercise that has come due — a secondary prompts 4 hours
+# after its parent main, never at the same time (cron at 11:30 and 01:00 for
+# the firing times above; the pass is idempotent so a more frequent tick is
+# also safe):
+python -m plastiglom.apps.scheduler --secondaries
+
 # Send follow-up reminders for still-open entries (cron hourly is plenty):
 python -m plastiglom.apps.scheduler --remind
 
@@ -78,9 +84,9 @@ python -m plastiglom.apps.web_app --host 127.0.0.1 --port 8001
 ```
 
 The firing notification carries the full prompt, the deep link, and — when
-the fired main has a connected secondary that may run later the same day — a
-one-line mention that a follow-up is coming. The same follow-up note shows on
-the web/mobile prompt screen.
+the fired main has a connected secondary that will prompt four hours later
+(before the entry locks) — a one-line mention that a follow-up is coming.
+The same follow-up note shows on the web/mobile prompt screen.
 
 `--remind` is a separate, idempotent heartbeat: when an entry is still
 unanswered and its lock (the next main firing) is within
@@ -102,7 +108,7 @@ Recommended crontab entry (staggered 15 min after `llm_schedule.py`):
 python -m plastiglom.apps.seeder seed-tagpool path/to/seed.yaml
 # An example seed lives at exercises/seed_tagpool.example.yaml.
 
-# Sonnet weekly digest — stats + themes, no memory writes:
+# Sonnet monthly digest — stats + themes, no memory writes:
 python -m plastiglom.apps.analyzer digest            # with Sonnet themes
 python -m plastiglom.apps.analyzer digest --no-themes  # stats only
 
@@ -171,17 +177,18 @@ drift vs. the live exercise.
 
 ## LLM job scheduler
 
-The Sonnet digest, Opus weekly/monthly analyses, and the meta-engine
-proposal pass each have a canonical cadence (see DESIGN.md §7.6 / §7.7).
-`apps/llm_scheduler` turns those into cron-driven jobs while leaving every
-function runnable on demand through its existing CLI.
+The Sonnet digest, Opus monthly analysis, and the meta-engine proposal
+pass each have a canonical cadence (see DESIGN.md §7.6 / §7.7). AI
+summaries land once at the end of each month — there are no scheduled
+weekly jobs. `apps/llm_scheduler` turns the cadences into cron-driven jobs
+while leaving every function runnable on demand through its existing CLI
+(including `opus weekly` for an ad-hoc week-scoped report).
 
 Default cadences (local time, overridable via env):
 
 | Job                | Schedule                          | Env override                        |
 | ------------------ | --------------------------------- | ----------------------------------- |
-| `digest_weekly`    | Sunday 22:00                      | `PLASTIGLOM_DIGEST_WEEKLY_AT`       |
-| `analyzer_weekly`  | Sunday 22:30                      | `PLASTIGLOM_ANALYZER_WEEKLY_AT`     |
+| `digest_monthly`   | Last day of month 22:00           | `PLASTIGLOM_DIGEST_MONTHLY_AT`      |
 | `analyzer_monthly` | Last day of month 23:00 (also fires blind-spot proposals) | `PLASTIGLOM_ANALYZER_MONTHLY_AT` |
 | `meta_blind_spots` | 15th of month 04:00 (independent proposal pass)            | `PLASTIGLOM_META_BLIND_SPOTS_AT` |
 
@@ -202,7 +209,7 @@ python -m plastiglom.apps.llm_scheduler status
 python -m plastiglom.apps.llm_scheduler run --dry-run
 
 # Run a single registered job right now (updates last_run_at):
-python -m plastiglom.apps.llm_scheduler force digest_weekly
+python -m plastiglom.apps.llm_scheduler force digest_monthly
 
 # Or invoke the underlying CLIs directly (does not touch scheduler state):
 python -m plastiglom.apps.analyzer digest
@@ -215,8 +222,8 @@ A failed job leaves `last_run_at` unchanged, so the next cron tick retries.
 
 When `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are configured, every fire
 (success or failure, scheduled or `force`-d) sends a one-line status to the
-bot chat — e.g. `Plastiglom: weekly digest written to /vault/analysis/weekly/2026-W19-digest.md`
-or `Plastiglom: digest_weekly failed — api 429`. Notifier errors are
+bot chat — e.g. `Plastiglom: monthly digest written to /vault/analysis/monthly/2026-04-digest.md`
+or `Plastiglom: digest_monthly failed — api 429`. Notifier errors are
 absorbed so a flaky Telegram can't poison the job.
 
 ## Phase 4 (meta-engine)

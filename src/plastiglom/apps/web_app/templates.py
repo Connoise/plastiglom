@@ -58,7 +58,7 @@ _HOME = """\
 <blockquote>{{ prompt }}</blockquote>
 {% endfor %}
 {% if has_followup %}
-<p class="meta">↪ A follow-up to this exercise will arrive later today.</p>
+<p class="meta">↪ A follow-up to this exercise will arrive about four hours after it fired.</p>
 {% endif %}
 <form method="post" action="/entry/{{ entry.id }}">
 <textarea name="response" autofocus>{{ entry.response }}</textarea>
@@ -84,7 +84,7 @@ _ENTRY = """\
 <blockquote>{{ prompt }}</blockquote>
 {% endfor %}
 {% if has_followup %}
-<p class="meta">↪ A follow-up to this exercise will arrive later today.</p>
+<p class="meta">↪ A follow-up to this exercise will arrive about four hours after it fired.</p>
 {% endif %}
 {% if locked %}
 <h2>Response</h2>

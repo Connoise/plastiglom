@@ -43,6 +43,7 @@ from plastiglom.apps.meta_engine import (
     save_proposal,
     validate_exercise_for_action,
 )
+from plastiglom.apps.scheduler.scheduler import SECONDARY_DELAY
 from plastiglom.apps.stats_report import build_report as build_stats_report
 from plastiglom.apps.stats_report import collect_entries
 from plastiglom.apps.stats_report.stats import parse_window as parse_stats_window
@@ -103,13 +104,12 @@ def create_app(
 
         Loads the active pool fresh so it tracks the live (vault) exercise
         set; cheap relative to the per-request markdown reads already done.
-        Gated on the entry locking later the same day it fired — a secondary
-        only fires while its parent's firing day is still going, so an evening
-        main (which locks next morning) has no follow-up "later today".
+        Secondaries prompt SECONDARY_DELAY (4h) after the parent fires, so
+        the mention is gated on that moment landing before the entry locks.
         """
         if entry is None:
             return False
-        if entry.lock_at.date() != entry.timestamp_fired.date():
+        if entry.timestamp_fired + SECONDARY_DELAY >= entry.lock_at:
             return False
         try:
             pool = load_active_pool(vault_path / "exercises")

@@ -251,8 +251,11 @@ and user refinement), diff, and the version numbers before/after.
 - Selects next main exercise by sampling the active pool weighted by
   `weight_factors` combined with day-of-week context.
 - Allows Opus-driven insertion of **up to three secondary exercises** per
-  day, triggered by context rules (time-of-day windows tied to a parent
-  main exercise that fired earlier that day, or Opus-flagged follow-ups).
+  day, tied to a parent main exercise that fired earlier. A secondary never
+  prompts the user at the same time as its parent: it fires **4 hours after
+  the parent main** (a separate `--secondaries` cron pass), provided the
+  parent's `lock_at` hasn't passed. Each parent firing produces at most one
+  secondary, keeping the pass idempotent.
 - At each main firing, computes the new `lock_at` and finalizes any prior
   unlocked entries.
 
@@ -263,9 +266,10 @@ and user refinement), diff, and the version numbers before/after.
   send after each main and secondary `on_fire`; both are best-effort and
   archival never blocks on the API.
 - When the fired main has a **connected secondary** (an active secondary
-  whose `parent_id` points at it) that may run later the same day, the
-  notification adds a one-line mention that a follow-up is coming. The same
-  note surfaces on the web/mobile prompt screen.
+  whose `parent_id` points at it) that will prompt 4 hours later — i.e. the
+  delayed moment lands before the entry locks — the notification adds a
+  one-line mention that a follow-up is coming. The same note surfaces on
+  the web/mobile prompt screen.
 - No response collection in Telegram. The chat stays a notification channel.
 - The LLM scheduler (§7.10) reuses the same `send_text` to announce
   successful and failed scheduled jobs.
@@ -307,15 +311,17 @@ and user refinement), diff, and the version numbers before/after.
 
 Cadence:
 
-- **Weekly**: runs Sunday night, covers the past 7 days.
-- **Monthly**: runs the last day of the month.
-- **Ad-hoc**: user-triggered from the web app, arbitrary date range and
-  granularity.
+- **Monthly**: runs the last day of the month. This is the only scheduled
+  analysis cadence — AI summaries reach the user once at the end of each
+  month, not weekly.
+- **Weekly / Ad-hoc**: user-triggered only (CLI or web app), arbitrary
+  date range and granularity.
 
-The weekly and monthly cadences are driven by `apps/llm_scheduler` (§7.9)
-which also wires the Phase 2 Sonnet digest and a standalone meta-engine
-proposal pass. Each job remains runnable on demand through its existing
-per-app CLI; the scheduler only adds an idempotent cron-facing wrapper.
+The monthly cadence is driven by `apps/llm_scheduler` (§7.9) which also
+wires the Phase 2 Sonnet digest (likewise monthly) and a standalone
+meta-engine proposal pass. Each job remains runnable on demand through its
+existing per-app CLI; the scheduler only adds an idempotent cron-facing
+wrapper.
 
 Flow:
 
@@ -412,16 +418,16 @@ timestamp still flow into the overall totals (`skipped_undated` counter).
 ### 7.10 LLM scheduler
 
 `apps/llm_scheduler` is the cron-facing dispatcher for LLM-driven jobs that
-have a canonical cadence: the Phase 2 Sonnet digest, Opus weekly analysis,
-Opus monthly analysis (which also triggers the meta-engine), and a
-standalone meta-engine proposal pass. It is deliberately separate from the
+have a canonical cadence: the Phase 2 Sonnet monthly digest, Opus monthly
+analysis (which also triggers the meta-engine), and a standalone
+meta-engine proposal pass. It is deliberately separate from the
 exercise scheduler in §7.1 — the user-facing firings are real-time events,
 whereas LLM jobs are batch and can tolerate hour-granularity ticks.
 
 Mechanism:
 
-- Each job declares a `Cadence` rule (weekly / monthly) interpreted in the
-  local timezone.
+- Each job declares a `Cadence` rule (monthly by default; a weekly rule
+  exists for ad-hoc registrations) interpreted in the local timezone.
 - `last_run_at` per job is persisted to `<vault>/logs/llm_scheduler_state.json`.
 - A cron entrypoint (recommended hourly) invokes `python -m
   plastiglom.apps.llm_scheduler run`; the runner fires a job iff its most
@@ -449,7 +455,7 @@ jobs are not. Notifier errors are swallowed so they cannot poison a fire.
 | Tag assignment per entry                     | Sonnet 4.6       | on submission |
 | Daily index summarization                    | Sonnet 4.6       | nightly       |
 | Short prompt/metadata cleanup                | Sonnet 4.6       | as needed    |
-| Weekly / monthly analysis                    | Opus 4.7         | scheduled    |
+| Monthly analysis (weekly on demand only)     | Opus 4.7         | scheduled    |
 | Ad-hoc analytical queries                    | Opus 4.7         | on demand    |
 | Memory file creation / reorganization        | Opus 4.7         | during analysis |
 | Exercise creation / editing / weight updates | Opus 4.7         | post-analysis |
@@ -482,7 +488,7 @@ pool), and logs cost/latency per call.
   and hubs from Second Brian as a one-time read.
 - Sonnet tagger on submission.
 - Hub notes scaffolded as organizing structure for tags.
-- Weekly digest (Sonnet, non-memory, stats + themes) — training wheels
+- Monthly digest (Sonnet, non-memory, stats + themes) — training wheels
   before Opus analysis comes online.
 - Decide concrete formats for: memory file structure, analysis report
   structure, exercise-history note structure, changelog conventions.

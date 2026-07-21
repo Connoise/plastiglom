@@ -9,7 +9,7 @@ due if the most recent canonical tick at-or-before `now` is after
 
 Times are emitted in the supplied tzinfo so that day-of-week / day-of-month
 arithmetic happens in the user's local zone, matching how DESIGN.md §7.6
-describes the cadences ("Sunday night", "last day of the month").
+describes the cadences ("last day of the month").
 """
 
 from __future__ import annotations

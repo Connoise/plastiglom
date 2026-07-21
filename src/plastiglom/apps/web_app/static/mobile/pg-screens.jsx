@@ -376,7 +376,7 @@ function ScreenPrompt({ theme, t, entry, loading, onOpen, onTab }) {
                   fontFamily: 'JetBrains Mono, monospace',
                   fontSize: 11, letterSpacing: 0.3, lineHeight: 1.4,
                   color: theme.textDim, textAlign: 'center',
-                }}>↪ A follow-up to this exercise will arrive later today.</div>
+                }}>↪ A follow-up to this exercise will arrive about four hours after it fired.</div>
               )}
 
               <div style={{

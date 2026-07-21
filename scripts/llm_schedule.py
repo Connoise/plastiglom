@@ -11,7 +11,7 @@ since every default job ticks at most once per day:
 To run a single job off-schedule:
 
     PLASTIGLOM_VAULT_PATH=... \\
-        /path/to/scripts/llm_schedule.py force digest_weekly
+        /path/to/scripts/llm_schedule.py force digest_monthly
 
 See `python -m plastiglom.apps.llm_scheduler --help` for the full surface.
 """

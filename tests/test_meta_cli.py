@@ -96,8 +96,7 @@ def _settings(vault: Path) -> Settings:
             model_opus="claude-opus-4-8",
             thinking_effort="high",
             qmd_bin="",
-        digest_weekly_at=time(22, 0),
-        analyzer_weekly_at=time(22, 30),
+        digest_monthly_at=time(22, 0),
         analyzer_monthly_at=time(23, 0),
         meta_blind_spots_at=time(4, 0),
     )

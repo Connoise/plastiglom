@@ -12,7 +12,7 @@ from plastiglom.apps.analyzer.analyzer import (
 )
 from plastiglom.apps.analyzer.digest import (
     DigestStats,
-    WeeklyDigest,
+    MonthlyDigest,
     compute_stats,
     render_stats_markdown,
 )
@@ -22,7 +22,7 @@ __all__ = [
     "Analyzer",
     "Cadence",
     "DigestStats",
-    "WeeklyDigest",
+    "MonthlyDigest",
     "compute_stats",
     "correction_request",
     "render_stats_markdown",

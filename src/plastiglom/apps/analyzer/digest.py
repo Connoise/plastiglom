@@ -1,21 +1,21 @@
-"""Phase 2 weekly digest. See §9 Phase 2 of DESIGN.md.
+"""Phase 2 monthly digest. See §9 Phase 2 of DESIGN.md.
 
-This is explicitly *not* the Opus weekly analysis from Phase 3. It runs on
+This is explicitly *not* the Opus monthly analysis from Phase 3. It runs on
 Sonnet, touches no memory files, and produces a compact report of:
   - counts by status (submitted / null / opened_unresponded)
   - counts by exercise id
   - most common tags
   - Sonnet-generated themes from the entry corpus
 
-Output is written to `analysis/weekly/YYYY-WW-digest.md` to stay distinct
-from the Opus `YYYY-WW.md` report path.
+Output is written to `analysis/monthly/YYYY-MM-digest.md` to stay distinct
+from the Opus `YYYY-MM.md` report path.
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import date, datetime, tzinfo
 from pathlib import Path
 
 from plastiglom.packages.core.entry import Entry, EntryStatus
@@ -77,7 +77,7 @@ def render_stats_markdown(stats: DigestStats) -> str:
 
 
 @dataclass
-class WeeklyDigest:
+class MonthlyDigest:
     vault_path: Path
     router: LLMRouter | None = None  # None -> skip the LLM themes section
 
@@ -90,18 +90,17 @@ class WeeklyDigest:
         if themes:
             body_parts.append("## Themes (Sonnet)\n\n" + themes.strip())
 
-        iso = window_start.isocalendar()
         path = (
             self.vault_path
             / "analysis"
-            / "weekly"
-            / f"{iso.year:04d}-W{iso.week:02d}-digest.md"
+            / "monthly"
+            / f"{window_start.year:04d}-{window_start.month:02d}-digest.md"
         )
         write_markdown_file(
             path,
             FrontmatterDocument(
                 metadata={
-                    "cadence": "weekly-digest",
+                    "cadence": "monthly-digest",
                     "window_start": window_start,
                     "window_end": window_end,
                     "count_total": stats.count_total,
@@ -118,7 +117,7 @@ class WeeklyDigest:
         user = _render_entries_compact(entries)
         call = LLMCall(
             system=(
-                "You summarize a week of short self-reflection entries into themes. "
+                "You summarize a month of short self-reflection entries into themes. "
                 "Produce 3-6 bullet points naming recurring subject matter or tone. "
                 "Neutral, blunt, no softening. No advice, no memory updates."
             ),
@@ -160,12 +159,16 @@ def _render_entries_compact(entries: list[Entry]) -> str:
     return "\n".join(lines)
 
 
-def week_bounds(anchor: date, tz: tzinfo | None = None) -> tuple[datetime, datetime]:
-    """Monday-to-Monday bounds for the ISO week containing `anchor`.
+def month_bounds(anchor: date, tz: tzinfo | None = None) -> tuple[datetime, datetime]:
+    """First-to-first bounds for the calendar month containing `anchor`.
 
     Pass `tz` when comparing against timezone-aware entry timestamps; the
     returned bounds are aware in that case and naive otherwise.
     """
-    monday = anchor - timedelta(days=anchor.weekday())
-    start = datetime.combine(monday, datetime.min.time(), tzinfo=tz)
-    return start, start + timedelta(days=7)
+    first = anchor.replace(day=1)
+    if first.month == 12:
+        next_first = first.replace(year=first.year + 1, month=1)
+    else:
+        next_first = first.replace(month=first.month + 1)
+    start = datetime.combine(first, datetime.min.time(), tzinfo=tz)
+    return start, datetime.combine(next_first, datetime.min.time(), tzinfo=tz)

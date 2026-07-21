@@ -2,7 +2,9 @@
 
 Wires together: config -> scheduler -> archiver.on_fire -> telegram notify.
 This is deliberately minimal; a real deployment would invoke this from cron
-or a systemd timer keyed to PLASTIGLOM_MORNING_FIRE and PLASTIGLOM_EVENING_FIRE.
+or a systemd timer keyed to PLASTIGLOM_MORNING_FIRE and PLASTIGLOM_EVENING_FIRE,
+plus a `--secondaries` pass SECONDARY_DELAY (4h) after each of those to
+prompt any connected follow-up exercise.
 """
 
 from __future__ import annotations
@@ -11,13 +13,14 @@ import argparse
 import logging
 import random
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from plastiglom.apps.archiver.archiver import Archiver, FireEvent
 from plastiglom.apps.memory_indexer import QMDCLIIndexer, StubIndexer
 from plastiglom.apps.scheduler.reminders import run_reminders
 from plastiglom.apps.scheduler.scheduler import (
+    SECONDARY_DELAY,
     FiringClock,
     Scheduler,
     _window_for,
@@ -46,8 +49,10 @@ logger = logging.getLogger(__name__)
 RECENT_FIRINGS_LOOKBACK_CAP = 50
 
 # Per §7.1: at most three secondaries per day. We let at most one fire on
-# each scheduler invocation so the user isn't blasted with two prompts at
-# once; the daily cap still applies across invocations.
+# each `--secondaries` pass so the user isn't blasted with two prompts at
+# once; the daily cap still applies across invocations. Secondaries never
+# fire together with their parent — each prompts SECONDARY_DELAY after the
+# parent main fired.
 SECONDARIES_PER_DAY = 3
 SECONDARIES_PER_FIRING = 1
 
@@ -87,30 +92,18 @@ def _load_active_secondary(exercises_dir: Path) -> list:
     return pool
 
 
-def _todays_firings(entries_root: Path, day: date) -> tuple[set[str], set[str]]:
-    """Return (main_ids_fired_today, secondary_ids_fired_today).
-
-    Used to gate secondary picks: a secondary is only eligible if its parent
-    main has already fired today, and we never fire the same secondary twice.
-    Reads only the day's directory rather than the full tree.
-    """
-    main_ids: set[str] = set()
-    sec_ids: set[str] = set()
-    day_dir = (
-        entries_root / f"{day.year:04d}" / f"{day.month:02d}"
-    )
+def _entries_for_day(entries_root: Path, day: date) -> list:
+    """Parse every entry fired on `day`. Reads only the day's directory."""
+    day_dir = entries_root / f"{day.year:04d}" / f"{day.month:02d}"
     if not day_dir.exists():
-        return main_ids, sec_ids
+        return []
+    entries = []
     for md_path in day_dir.glob(f"{day.day:02d}-*.md"):
         try:
-            entry = parse_entry(read_markdown_file(md_path))
+            entries.append(parse_entry(read_markdown_file(md_path)))
         except Exception:
             continue
-        if entry.exercise_id.startswith("main-"):
-            main_ids.add(entry.exercise_id)
-        elif entry.exercise_id.startswith("secondary-"):
-            sec_ids.add(entry.exercise_id)
-    return main_ids, sec_ids
+    return entries
 
 
 def _recent_main_exercise_ids(
@@ -164,9 +157,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Fire the next main exercise.")
     parser.add_argument("--dry-run", action="store_true", help="Pick but do not write.")
     parser.add_argument(
-        "--no-secondaries",
+        "--secondaries",
         action="store_true",
-        help="Skip the secondary-exercise pass after firing the main.",
+        help=(
+            "Run the delayed secondary pass instead of firing a main: prompt "
+            "any connected follow-up whose parent fired SECONDARY_DELAY (4h) "
+            "ago and hasn't locked yet."
+        ),
     )
     parser.add_argument(
         "--remind",
@@ -183,6 +180,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.remind:
         return _remind(settings)
+    if args.secondaries:
+        return _fire_due_secondaries(settings)
 
     pool = _load_active_main(settings.exercises_dir)
     if not pool:
@@ -229,27 +228,15 @@ def main(argv: list[str] | None = None) -> int:
     entry = archiver.on_fire(FireEvent(exercise=exercise, fired_at=now, lock_at=lock_at))
     logger.info("fired entry=%s", entry.id)
 
-    # Tell the user up front when this main has a connected follow-up that
-    # may fire later today (§7.1). Loaded once and reused by the secondary pass.
-    # A secondary only fires while its parent's firing day is still going, so
-    # the mention is gated on the entry locking later the *same* day it fired
-    # (true for morning firings, false for evening ones that lock next morning).
+    # Tell the user up front when this main has a connected follow-up coming
+    # (§7.1). Secondaries prompt SECONDARY_DELAY after the parent (via the
+    # `--secondaries` pass), so the mention is gated on that moment landing
+    # before this entry locks.
     secondary_pool = _load_active_secondary(settings.exercises_dir)
-    followup_possible_today = lock_at.date() == now.date()
-    has_followup = followup_possible_today and bool(
+    has_followup = now + SECONDARY_DELAY < lock_at and bool(
         active_followups(exercise.id, secondary_pool)
     )
     _notify_fire(entry, settings, has_followup=has_followup)
-
-    if not args.no_secondaries:
-        _fire_eligible_secondaries(
-            archiver=archiver,
-            scheduler=scheduler,
-            settings=settings,
-            now=now,
-            lock_at=lock_at,
-            secondary_pool=secondary_pool,
-        )
     return 0
 
 
@@ -291,45 +278,97 @@ def _notify_fire(entry, settings, *, has_followup: bool = False) -> None:
         logger.warning("telegram notify failed for entry=%s", entry.id)
 
 
-def _fire_eligible_secondaries(
-    *,
-    archiver: Archiver,
-    scheduler: Scheduler,
-    settings,
-    now: datetime,
-    lock_at: datetime,
-    secondary_pool: list | None = None,
-) -> None:
-    """Pick and fire context-triggered secondaries.
+def _fire_due_secondaries(settings, *, now: datetime | None = None) -> int:
+    """Pick and fire context-triggered secondaries that have come due.
 
-    A secondary fires only when its parent main has already fired earlier
-    today. Capped per-firing and per-day per §7.1; lock_at matches the
-    main's so the day's edits seal together. `secondary_pool` may be passed
-    in to avoid a re-read; when omitted it is loaded from disk.
+    A secondary prompts the user SECONDARY_DELAY (4h) after its parent main
+    fired — never in the same breath as the parent. Eligibility: the parent's
+    most recent firing is at least SECONDARY_DELAY old, its lock hasn't
+    passed, and that firing hasn't produced a secondary yet (so the pass is
+    idempotent on a cron tick). The fired secondary inherits the parent's
+    `lock_at` so the pair's edits seal together. Capped per-pass and per-day
+    per §7.1.
+
+    Intended cron wiring: one invocation SECONDARY_DELAY after each main
+    firing time, though a more frequent tick is safe.
     """
-    if secondary_pool is None:
-        secondary_pool = _load_active_secondary(settings.exercises_dir)
+    secondary_pool = _load_active_secondary(settings.exercises_dir)
     if not secondary_pool:
-        return
+        logger.info("no active secondary exercises")
+        return 0
 
-    parents_fired, secondaries_fired = _todays_firings(settings.entries_dir, now.date())
-    remaining_today = SECONDARIES_PER_DAY - len(secondaries_fired)
-    if remaining_today <= 0:
-        return
+    now = now or datetime.now(tz=settings.timezone)
+    # Scan today and yesterday: an evening parent's delay window crosses
+    # midnight (e.g. 21:00 + 4h = 01:00 next day), so its entry lives in
+    # yesterday's slot by the time the secondary comes due.
+    recent = _entries_for_day(settings.entries_dir, now.date()) + _entries_for_day(
+        settings.entries_dir, now.date() - timedelta(days=1)
+    )
+    mains: dict = {}
+    for entry in recent:
+        if not entry.exercise_id.startswith("main-"):
+            continue
+        seen = mains.get(entry.exercise_id)
+        if seen is None or entry.timestamp_fired > seen.timestamp_fired:
+            mains[entry.exercise_id] = entry
+    fired_secondaries = [e for e in recent if e.exercise_id.startswith("secondary-")]
 
+    # Parents whose current firing already produced a secondary are served.
+    parent_of = {ex.id: ex.parent_id for ex in secondary_pool}
+    served_parents = set()
+    for sec in fired_secondaries:
+        parent_id = parent_of.get(sec.exercise_id)
+        parent = mains.get(parent_id) if parent_id else None
+        if parent is not None and sec.timestamp_fired >= parent.timestamp_fired:
+            served_parents.add(parent_id)
+
+    eligible_parents = {
+        ex_id
+        for ex_id, entry in mains.items()
+        if ex_id not in served_parents
+        and entry.timestamp_fired + SECONDARY_DELAY <= now < entry.lock_at
+    }
+
+    fired_today = {
+        e.exercise_id
+        for e in fired_secondaries
+        if e.timestamp_fired.astimezone(settings.timezone).date() == now.date()
+    }
+    remaining_today = SECONDARIES_PER_DAY - len(fired_today)
+    if not eligible_parents or remaining_today <= 0:
+        logger.info("no secondary due")
+        return 0
+
+    scheduler = Scheduler(
+        clock=FiringClock(settings.morning_fire, settings.evening_fire),
+        tz=settings.timezone,
+        rng=random.Random(),
+    )
     picks = scheduler.select_secondaries(
         secondary_pool,
         when=now,
-        parent_ids_fired_today=parents_fired,
-        already_fired_secondary_ids=secondaries_fired,
+        eligible_parent_ids=eligible_parents,
+        already_fired_secondary_ids={e.exercise_id for e in fired_secondaries},
         max_count=min(SECONDARIES_PER_FIRING, remaining_today),
     )
+    if not picks:
+        logger.info("no secondary due")
+        return 0
+
+    indexer = (
+        QMDCLIIndexer(qmd_bin=settings.qmd_bin, vault_path=settings.vault_path)
+        if getattr(settings, "qmd_bin", "")
+        else StubIndexer()
+    )
+    archiver = Archiver(settings.vault_path, on_change=lambda _path: indexer.reindex())
     for secondary in picks:
+        parent_entry = mains[secondary.parent_id]
         sec_entry = archiver.on_fire(
-            FireEvent(exercise=secondary, fired_at=now, lock_at=lock_at)
+            FireEvent(exercise=secondary, fired_at=now, lock_at=parent_entry.lock_at)
         )
         logger.info("fired secondary=%s entry=%s", secondary.id, sec_entry.id)
         _notify_fire(sec_entry, settings)
+    return 0
 
 
 if __name__ == "__main__":
